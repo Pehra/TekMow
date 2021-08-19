@@ -34,7 +34,7 @@ class Safety
     void plot_all (int x, int y, int z, int xa, int ya, int za);
     void plot_averages (int xa, int ya, int za);
     void plot_values (int x, int y, int z);
-    //int out_of_range(int now, int avg);
+    void calculate_average(int xa, int xt, int ya, int yt, int za, int zt, int readIndex);
     
   private:
     int x,y,z;
@@ -112,18 +112,33 @@ class Safety
     Serial.println(za);
   
   }
-  /*
-  int Safety::out_of_range(int now, int avg)
+  void Safety::calculate_average(int xa, int xt, int ya, int yt, int za, int zt, int readIndex)
   {
-    if (now >= (avg+20) || now <=(avg-20))            //LED lights up if the last reading is not the same as the average
-    { 
-      return 1;
-    } else {
-      return 0;
-    }
-  
+    // subtract the last reading:
+  x_total = x_total - x_readings[readIndex];
+  y_total = y_total - y_readings[readIndex];
+  z_total = z_total - z_readings[readIndex];
+  // read from the sensor:
+  x_readings[readIndex] = x;
+  y_readings[readIndex] = y;
+  z_readings[readIndex] = z;
+  // add the reading to the total:
+  x_total = x_total + x_readings[readIndex];
+  y_total = y_total + y_readings[readIndex];
+  z_total = z_total + z_readings[readIndex];
+  // advance to the next position in the array:
+  readIndex = readIndex + 1;
+
+  // if we're at the end of the array...
+  if (readIndex >= numReadings) {
+    // ...wrap around to the beginning:
+    readIndex = 0;
   }
-    */
+    x_average = x_total / numReadings;
+    y_average = y_total / numReadings;
+    z_average = z_total / numReadings;
+  }
+ 
 Safety TekMow_safety(A0, A1, A2);
 
 void setup() {
@@ -148,7 +163,9 @@ void loop() {
   y = analogRead(A1);
   z = analogRead(A2);
 
-   TekMow_safety.plot_values( x, y, z);
+   TekMow_safety.calculate_average(x_average, x_total, y_average, y_total, z_average, z_total, readIndex);
+   TekMow_safety.plot_averages( x, y, z);
+      
 /*
 //running average calculations
   // subtract the last reading:
@@ -172,9 +189,9 @@ void loop() {
     readIndex = 0;
   }
 
-  calculate_average(x_average, x_total, y_average, y_total,z_average, z_total);
+  //calculate_average(x_average, x_total, y_average, y_total,z_average, z_total);
    
-  plot_values (x,y,z);
+  //plot_values (x,y,z);
   //plot_averages(x_average,y_average,z_average);
   //light_LED(x, x_average);
   //timer(x, x_average);
@@ -206,12 +223,3 @@ void loop() {
     }
     
   }
-
-
-void calculate_average(int xa, int xt, int ya, int yt, int za, int zt)
-{
-  x_average = x_total / numReadings;
-  y_average = y_total / numReadings;
-  z_average = z_total / numReadings;
-}
-//void check_level(
