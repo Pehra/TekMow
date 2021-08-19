@@ -30,6 +30,12 @@ class Safety
   public:
     Safety(int x_inputPin,int y_inputPin,int z_inputPin );
     int isLevel();
+    void print_values(int x, int y, int z);
+    void plot_all (int x, int y, int z, int xa, int ya, int za);
+    void plot_averages (int xa, int ya, int za);
+    void plot_values (int x, int y, int z);
+    //int out_of_range(int now, int avg);
+    
   private:
     int x,y,z;
     int x_pin, y_pin, z_pin;
@@ -54,14 +60,77 @@ class Safety
         return 0;
       }
   }
-
+  void Safety:: print_values(int x, int y, int z)
+  {
+    // send it to the computer as ASCII digits
+    Serial.print("X reading ");
+    Serial.println(x_readings[readIndex]);
+  
+    Serial.print("Y reading ");
+    Serial.print(y_readings[readIndex]);
+  
+    Serial.print("Z reading ");
+    Serial.println(z_readings[readIndex]);
+  }
+  void Safety::plot_all (int x, int y, int z, int xa, int ya, int za)
+  {
+    Serial.print(x);
+    Serial.print(",");
+    Serial.print(xa);
+    Serial.print(",");
+    
+    Serial.print(y);
+    Serial.print(",");
+    Serial.print(ya);
+    Serial.print(",");
+    
+    Serial.print(z);
+    Serial.print(",");
+    Serial.println(za);
+  }
+  void Safety::plot_values (int x, int y, int z)
+  {
+    Serial.print(x);
+    Serial.print(",");
+    
+    Serial.print(y);
+    Serial.print(",");
+  
+    Serial.println(z);
+    
+  
+  }
+  void Safety::plot_averages (int xa, int ya, int za)
+  {
+   
+    Serial.print(xa);
+    Serial.print(",");
+    
+    Serial.print(ya);
+    Serial.print(",");
+    
+    Serial.println(za);
+  
+  }
+  /*
+  int Safety::out_of_range(int now, int avg)
+  {
+    if (now >= (avg+20) || now <=(avg-20))            //LED lights up if the last reading is not the same as the average
+    { 
+      return 1;
+    } else {
+      return 0;
+    }
+  
+  }
+    */
 Safety TekMow_safety(A0, A1, A2);
 
 void setup() {
 
    // initialize serial communication with computer
   Serial.begin(9600);
-
+  
 }
 
 void loop() {
@@ -72,12 +141,15 @@ void loop() {
     digitalWrite(LED, LOW);
   }
   
- /*
-  //getting data and lighting LED
+  //TekMow_safety.plot_values( x, y, z);
+ 
+  //getting data 
   x = analogRead(A0);
   y = analogRead(A1);
   z = analogRead(A2);
 
+   TekMow_safety.plot_values( x, y, z);
+/*
 //running average calculations
   // subtract the last reading:
   x_total = x_total - x_readings[readIndex];
@@ -124,70 +196,17 @@ void loop() {
 */
 
 }
-void print_values(int x, int y, int z)
-{
-    // send it to the computer as ASCII digits
-  Serial.print("X reading ");
-  Serial.println(x_readings[readIndex]);
-
-  Serial.print("Y reading ");
-  Serial.print(y_readings[readIndex]);
-
-  Serial.print("Z reading ");
-  Serial.println(z_readings[readIndex]);
-}
-
-void plot_all (int x, int y, int z, int xa, int ya, int za)
-{
-  Serial.print(x);
-  Serial.print(",");
-  Serial.print(xa);
-  Serial.print(",");
-  
-  Serial.print(y);
-  Serial.print(",");
-  Serial.print(ya);
-  Serial.print(",");
-  
-  Serial.print(z);
-  Serial.print(",");
-  Serial.println(za);
-}
-void plot_values (int x, int y, int z)
-{
-  Serial.print(x);
-  Serial.print(",");
-  
-  Serial.print(y);
-  Serial.print(",");
-
-  Serial.println(z);
-  
-  
-}
-void plot_averages (int xa, int ya, int za)
-{
- 
-  Serial.print(xa);
-  Serial.print(",");
-  
-  Serial.print(ya);
-  Serial.print(",");
-  
-  Serial.println(za);
-
-}
-
-int out_of_range(int now, int avg)
-{
-  if (now >= (avg+20) || now <=(avg-20))            //LED lights up if the last reading is not the same as the average
-  { 
-    return 1;
-  } else {
-    return 0;
+  int out_of_range(int now, int avg)
+  {
+    if (now >= (avg+20) || now <=(avg-20))            //LED lights up if the last reading is not the same as the average
+    { 
+      return 1;
+    } else {
+      return 0;
+    }
+    
   }
-  
-}
+
 
 void calculate_average(int xa, int xt, int ya, int yt, int za, int zt)
 {
