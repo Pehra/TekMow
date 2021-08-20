@@ -26,8 +26,8 @@
 #define R_EN        7
 #define R_DIR       6
 
-#define ROBOT_ADDRESS "MELVIN"
-#define XMTR_ADDRESS "XMTR00"
+#define ROBOT_ADDRESS "1Node"
+#define XMTR_ADDRESS "2Node"
 
 uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
 
@@ -102,6 +102,7 @@ volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
 String failReason = "No Failure";
 
+
 /*
    Definition: this function is used to pull and decode the packet sent over NRF
 
@@ -116,6 +117,7 @@ String failReason = "No Failure";
 
    Output: state logic is set acording to the input command, Config data is set
 */
+
 int GetCommand() {
   uint8_t command, size;
   radio.read( &command, 1 );           // Get the command
@@ -131,7 +133,9 @@ int GetCommand() {
     case STOP:
       driveNS = command;
       driveTime = millis();
+
       return 1;
+
     case SET_COORD:
       DecodePayload(size, payload);
       box[0] = floatUnion.Num[0];
@@ -373,8 +377,8 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(GPSBAUD);
 
-  Serial.println(F("TekMow Robot Starting"));
 
+  Serial.println(F("TekMow Robot Starting"));
   if (!radio.begin()) {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
@@ -412,6 +416,7 @@ void loop() {
     robotNS = ROBOT_ERROR;
     Serial.println("Radio Link Failed");
     failReason = "Radio not transmitting.";
+
   }
   
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
@@ -419,7 +424,6 @@ void loop() {
     if (radio.available()) {
       if (GetCommand() == 1)
         radioLinkTime = millis();
-    }
 
     /**********************|| Control Cycle ||**********************/
     if (driveNS != drivePS) {
