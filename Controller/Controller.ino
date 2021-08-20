@@ -8,28 +8,10 @@
 #include "printf.h"
 #include "RF24.h"
 
-#define WD 5000
+// These files need to have thier locations updated before compile to match where you placed your files.
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/github/TekMow/tekmow.h"
 
-typedef enum {
-  FORWARD,
-  BACKWORDS,
-  LEFT,
-  RIGHT,
-  STOP,
-  SET_COORD,
-  GPS_RESPONCE,
-  
-  DUMP_VARS,
-  READ_DATA,
-  BLADE_ON,
-  BLADE_OFF,
-  IDEL_MODE,
-  TRASPORT_MODE,
-  OPERATION_MODE,
-  SHUT_DOWN,
-  HEART_BEAT,
-  num_commands
-};
+#define WD 5000
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 */
 RF24 radio(9,10);
@@ -70,14 +52,22 @@ void loop() {
 
     Buffer[0] = command;
 
-    if(command <= STOP){
-      Buffer[1] = 0;
-    }else if(command == SET_COORD){
-      Buffer[1] = 16;
-      getCoord(floatUnion.Num);
-      fillBuff(16,2,floatUnion.array);
-    }else{
-      Serial.println("invalid command");
+    switch (command){
+      case FORWARD:
+      case BACKWARD:
+      case LEFT:
+      case RIGHT:
+      case STOP:
+        Buffer[1] = 0;
+        break;
+      case SET_COORD:
+        Buffer[1] = 16;
+        getCoord(floatUnion.Num);
+        fillBuff(16,2,floatUnion.array);
+        break;
+      default:
+        Serial.println("invalid command");
+        break;
     }
 
     sendBuffer();
@@ -86,20 +76,29 @@ void loop() {
   
    //this section of code is untested
    
-  else if(radio.available()){
+  if(radio.available()){
     uint8_t command,size;
     radio.read( &command, 1 );           // Get the command
     radio.read( &size, 1 );              // Get the size
     radio.read( &payload, size );
-  
+
+    switch (command){
+      case GPS_RESPONCE:
+        DecodePayload(size, payload);
+        currentCoord[0] = floatUnion.Num[0];
+        currentCoord[1] = floatUnion.Num[1];
+        currentCoord[2] = floatUnion.Num[2];
+        currentCoord[3] = floatUnion.Num[3];
+        break;
+      default:
+        Serial.println("Invalid Responce");
+        break;
+    }
+    
     if(command == GPS_RESPONCE){
-      DecodePayload(size, payload);
-      currentCoord[0] = floatUnion.Num[0];
-      currentCoord[1] = floatUnion.Num[1];
-      currentCoord[2] = floatUnion.Num[2];
-      currentCoord[3] = floatUnion.Num[3];
+      
     }else{
-      Serial.println("Invalid Responce");
+      
     }
   }
   /**********************|| Sending Heart Beat ||**********************/
@@ -116,7 +115,7 @@ void loop() {
 bool sendBuffer(){
   radio.stopListening();
   
-  if(radio.write( &Buffer, Buffer[1]) ){
+  if(radio.write( &Buffer, Buffer[1]+2) ){
     Serial.println("Com sent");
     heartBeat = millis();
   }else{

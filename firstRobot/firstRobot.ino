@@ -17,6 +17,9 @@
 #include "RF24.h"
 #include <TinyGPS++.h>
 
+// These files need to have thier locations updated before compile to match where you placed your files.
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/github/TekMow/tekmow.h"
+
 #define L_EN        5
 #define L_DIR       4
 #define R_EN        7
@@ -25,28 +28,6 @@
 
 static const uint32_t GPSBaud = 9600;
 byte addresses[][6] = {"1Node","2Node"};
-
-//Command List
-typedef enum {
-  FORWARD,
-  BACKWORD,
-  LEFT,
-  RIGHT,
-  STOP,
-  SET_COORD,
-  GPS_RESPONCE,
-  
-  DUMP_VARS,
-  READ_DATA,
-  BLADE_ON,
-  BLADE_OFF,
-  IDEL_MODE,
-  TRASPORT_MODE,
-  OPERATION_MODE,
-  SHUT_DOWN,
-  HEART_BEAT,
-  num_commands
-};
 
 /* Hardware configuration: 
  *  Set up nRF24L01 radio on SPI bus plus pins 9 & 10 
@@ -63,6 +44,7 @@ union {
   
 byte payload[30];
 float box[4];
+uint8_t command, size;
 
 //State and timer variables
 unsigned long driveTime;
@@ -141,7 +123,6 @@ void loop() {
  * Output: state logic is set acording to the input command, Config data is set
  */
 void GetCommand(){
-  uint8_t command, size;
   radio.read( &command, 1 );           // Get the command
   radio.read( &size, 1 );              // Get the size
   if(size > 0){
@@ -150,7 +131,8 @@ void GetCommand(){
 
   switch (command){
     case FORWARD:
-    case BACKWORD:
+    case BACKWARD:
+    case LEFT:
     case RIGHT:
     case STOP:
       driveNS = command;
@@ -187,12 +169,12 @@ void DecodePayload(int size, byte *input){
  * Definition: exicutes non_blocking controle of the drive motors
  * 
  */
-void Drive(uint8_t command){
-  switch(command){
+void Drive(uint8_t driveCommand){
+  switch(driveCommand){
     case FORWARD:
       Forword();
       break;
-    case BACKWORD:
+    case BACKWARD:
       Backwords();
       break;
     case LEFT:
