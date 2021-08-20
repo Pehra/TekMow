@@ -10,6 +10,7 @@
  * of current layout. I think making a error, state, and config struct 
  * and/or class may also be helpfull.
  * 
+ * 
  */
  
 #include <SPI.h>
