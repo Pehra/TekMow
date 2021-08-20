@@ -1,17 +1,18 @@
 /*
-   Notes: currnetly this code can read commands from the controller.
-   The drive funtion was changed to non blocking and stoped working,
-   some fixes were made but they are untested. The decoding of NRF
-   data was moved to the function GetCommand() and a switch function
-   is now used instead of if statements. these changes dont have
-   compiler errors but arnt tested.
-
-   next steps are to impliment the Comm and Controller class instead
-   of current layout. I think making a error, state, and config struct
-   and/or class may also be helpfull.
-
-*/
-
+ * Notes: currnetly this code can read commands from the controller. 
+ * The drive funtion was changed to non blocking and stoped working, 
+ * some fixes were made but they are untested. The decoding of NRF 
+ * data was moved to the function GetCommand() and a switch function 
+ * is now used instead of if statements. these changes dont have 
+ * compiler errors but arnt tested.
+ * 
+ * next steps are to impliment the Comm and Controller class instead 
+ * of current layout. I think making a error, state, and config struct 
+ * and/or class may also be helpfull.
+ * 
+ * 
+ */
+ 
 #include <SPI.h>
 #include "printf.h"
 #include "RF24.h"
@@ -72,6 +73,7 @@ class Safety
     Set Up GPS on RX1/TX1
 */
 RF24 radio(9, 10);
+
 TinyGPSPlus gps;
 Safety TekMow_safety(A0, A1, A2); // Creates the accelerometer object
 
@@ -87,6 +89,7 @@ Coord coord2 = {44.567232, -123.279307};
 
 byte payload[30];
 float box[4];
+uint8_t command, size;
 
 //State and timer variables
 unsigned long driveTime = 0;
@@ -103,20 +106,21 @@ volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
 String failReason = "No Failure";
 
 
+
 /*
-   Definition: this function is used to pull and decode the packet sent over NRF
-
-   Assumptions: the input buffer for the NRF has data in it
-   and the data is formatted as shown below
-
-          _________________________________________________
-         |  Command  | Payload Size |       Payload        |
-         |-------------------------------------------------|
-         |  1 Byte   |    1 Byte    |      0-30 Bytes      |
-         |-------------------------------------------------|
-
-   Output: state logic is set acording to the input command, Config data is set
-*/
+ * Definition: this function is used to pull and decode the packet sent over NRF
+ * 
+ * Assumptions: the input buffer for the NRF has data in it 
+ * and the data is formatted as shown below
+ * 
+ *        _________________________________________________
+ *       |  Command  | Payload Size |       Payload        |
+ *       |-------------------------------------------------|
+ *       |  1 Byte   |    1 Byte    |      0-30 Bytes      |
+ *       |-------------------------------------------------|
+ *       
+ * Output: state logic is set acording to the input command, Config data is set
+ */
 
 int GetCommand() {
   uint8_t command, size;
@@ -129,6 +133,7 @@ int GetCommand() {
   switch (command) {
     case FORWARD:
     case BACKWARD:
+    case LEFT:
     case RIGHT:
     case STOP:
       driveNS = command;
@@ -192,11 +197,11 @@ void DecodePayload(int size, byte *input) {
 }
 
 /*
-   Definition: exicutes non_blocking controle of the drive motors
-
-*/
-void Drive(uint8_t command) {
-  switch (command) {
+ * Definition: exicutes non_blocking controle of the drive motors
+ * 
+ */
+void Drive(uint8_t driveCommand){
+  switch(driveCommand){
     case FORWARD:
       Forword();
       break;

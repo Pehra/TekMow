@@ -2,6 +2,7 @@
  * Notes: This code is able to send commands to the robot over NRF
  * the commands are enterd as there numarical value into the arduino 
  * serial terminal. 
+ * 
  */
 
 #include <SPI.h>
@@ -9,6 +10,7 @@
 #include "RF24.h"
 
 // These files need to have thier locations updated before compile to match where you placed your files.
+
 #include "C:/Users/Don/Desktop/TekMow/tekmow.h"
 
 #define WD 4000
@@ -75,20 +77,24 @@ void loop() {
     //Serial.println(command);
 
     Buffer[0] = command;
-    if( command == STOP ||
-        command == FORWARD ||
-        command == LEFT ||
-        command == RIGHT ||
-        command == BACKWARD){
-      Buffer[1] = 0;
-      sendBuffer();
-    }else if(command == SET_COORD){
-      Buffer[1] = 16; //set payload size.
-      getCoord(floatUnion.Num);
-      fillBuff(16,2,floatUnion.array);
-      sendBuffer();
-    }else{
-      Serial.println("invalid command");
+    switch (command){
+      case FORWARD:
+      case BACKWARD:
+      case LEFT:
+      case RIGHT:
+      case STOP:
+        Buffer[1] = 0;
+        sendBuffer();
+        break;
+      case SET_COORD:
+        Buffer[1] = 16;
+        getCoord(floatUnion.Num);
+        fillBuff(16,2,floatUnion.array);
+        sendBuffer();
+        break;
+      default:
+        Serial.println("invalid command");
+        break;
     }
     
     
@@ -96,8 +102,33 @@ void loop() {
   }/**********************|| Receving Radio ||**********************/
   
    //this section of code is untested
-   
-  
+
+  if(radio.available()){
+    uint8_t command,size;
+    radio.read( &command, 1 );           // Get the command
+    radio.read( &size, 1 );              // Get the size
+    radio.read( &payload, size );
+
+    switch (command){
+      case GPS_RESPONCE:
+        DecodePayload(size, payload);
+        currentCoord[0] = floatUnion.Num[0];
+        currentCoord[1] = floatUnion.Num[1];
+        currentCoord[2] = floatUnion.Num[2];
+        currentCoord[3] = floatUnion.Num[3];
+        break;
+      default:
+        Serial.println("Invalid Responce");
+        break;
+    }
+    
+    if(command == GPS_RESPONCE){
+      
+    }else{
+      
+    }
+  }
+
   /**********************|| Sending Heart Beat ||**********************/
   if(millis() > (heartBeatTimer + WD)){
     Buffer[0] = HEART_BEAT;
@@ -109,8 +140,7 @@ void loop() {
 
 bool sendBuffer(){
   radio.stopListening();
-  
-  if(radio.write( &Buffer, Buffer[1]) ){
+  if(radio.write( &Buffer, Buffer[1]+2) ){
     heartBeatTimer = millis();
   }else{
  //   Serial.println("Buffer was sent, but there was no Acknowledge. Reset Board to continue.");

@@ -48,3 +48,4 @@ struct Coord{
   float latitude;
   float longitude;
 };
+
