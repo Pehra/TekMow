@@ -6,14 +6,14 @@ typedef enum {
   RIGHT,
   STOP,
   SET_COORD,
-  GPS_RESPONCE,
+  GPS_RESPONSE,
   
   DUMP_VARS,
   READ_DATA,
   BLADE_ON,
   BLADE_OFF,
-  IDEL_MODE,
-  TRASPORT_MODE,
+  IDLE_MODE,
+  TRANSPORT_MODE,
   OPERATION_MODE,
   SHUT_DOWN,
   HEART_BEAT,
@@ -48,3 +48,4 @@ struct Coord{
   float latitude;
   float longitude;
 };
+

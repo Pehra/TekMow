@@ -10,9 +10,10 @@
 #include "RF24.h"
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-#include "C:/Users/pooki/Desktop/Tekbots/TekMow/github/TekMow/tekmow.h"
 
-#define WD 5000
+#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
+
+#define WD 4000
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 */
 RF24 radio(9,10);
@@ -22,14 +23,38 @@ union {
    float Num[4];
 } floatUnion;
 
-unsigned long heartBeat;
+unsigned long heartBeatTimer;
 float currentCoord[4];
 byte payload[30];
 byte Buffer[32];
-byte addresses[][6] = {"1Node","2Node"};
+
+#define ROBOT_ADDRESS "MELVIN"
+#define XMTR_ADDRESS "XMTR00"
+
+uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
+
+
+uint8_t processSerialCommand(uint8_t incoming){
+  switch (incoming){
+    case 'w':
+      return FORWARD;
+    case 'a':
+      return LEFT;
+   case 'd':
+      return RIGHT;
+   case 's':
+      return BACKWARD;
+   case ' ':
+      return STOP;
+   default:
+      return incoming; 
+  }
+}
 
 void setup() {
   Serial.begin(115200);
+  Serial.println(F("TekMow Transmitter Starting"));
+  Serial.println(F("Use WASD to move, SPACE to stop."));
   
   // initialize the transceiver on the SPI bus
   if (!radio.begin()) {
@@ -47,12 +72,11 @@ void setup() {
 
 void loop() {
   /**********************|| Sending Command ||**********************/
-  if( Serial.available()){
-    uint8_t command = Serial.parseInt();
-    Serial.println(command);
+  if(Serial.available()){
+    uint8_t command = processSerialCommand(Serial.read());
+    //Serial.println(command);
 
     Buffer[0] = command;
-
     switch (command){
       case FORWARD:
       case BACKWARD:
@@ -60,23 +84,25 @@ void loop() {
       case RIGHT:
       case STOP:
         Buffer[1] = 0;
+        sendBuffer();
         break;
       case SET_COORD:
         Buffer[1] = 16;
         getCoord(floatUnion.Num);
         fillBuff(16,2,floatUnion.array);
+        sendBuffer();
         break;
       default:
         Serial.println("invalid command");
         break;
     }
-
-    sendBuffer();
+    
+    
     
   }/**********************|| Receving Radio ||**********************/
   
    //this section of code is untested
-   
+
   if(radio.available()){
     uint8_t command,size;
     radio.read( &command, 1 );           // Get the command
@@ -102,25 +128,23 @@ void loop() {
       
     }
   }
+
   /**********************|| Sending Heart Beat ||**********************/
-  if(millis() > (heartBeat + WD)){
+  if(millis() > (heartBeatTimer + WD)){
     Buffer[0] = HEART_BEAT;
     Buffer[1] = 1;
-
-    Serial.println("Sending Heart Beat");
+//    Serial.println("<3");
     sendBuffer();
-    heartBeat = millis();
   }
 }
 
 bool sendBuffer(){
   radio.stopListening();
-  
   if(radio.write( &Buffer, Buffer[1]+2) ){
-    Serial.println("Com sent");
-    heartBeat = millis();
+    heartBeatTimer = millis();
   }else{
-    Serial.println("no com ACK");
+ //   Serial.println("Buffer was sent, but there was no Acknowledge. Reset Board to continue.");
+ //   while (1);
   }
   
   radio.startListening();
