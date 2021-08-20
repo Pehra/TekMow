@@ -100,6 +100,7 @@ volatile uint8_t drivePS = STOP, driveNS = STOP;
 volatile gpsStates gpsPS = GPS_OUTBOUNDS, gpsNS = GPS_OUTBOUNDS;
 volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
+String failReason = "No Failure";
 
 
 /*
@@ -116,7 +117,8 @@ volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
 
    Output: state logic is set acording to the input command, Config data is set
 */
-void GetCommand() {
+
+int GetCommand() {
   uint8_t command, size;
   radio.read( &command, 1 );           // Get the command
   radio.read( &size, 1 );              // Get the size
@@ -131,7 +133,9 @@ void GetCommand() {
     case STOP:
       driveNS = command;
       driveTime = millis();
-      break;
+
+      return 1;
+
     case SET_COORD:
       DecodePayload(size, payload);
       box[0] = floatUnion.Num[0];
@@ -143,11 +147,14 @@ void GetCommand() {
       Serial.println(floatUnion.Num[1]);
       Serial.println(floatUnion.Num[2]);
       Serial.println(floatUnion.Num[3]);
-      break;
+      return 1;
+    case HEART_BEAT:
+      return 1;
     default:
       Serial.println("invalid command");
-      break;
+      return 0;
   }
+  return 0;
 }
 
 void nrfDebugText(String text){
@@ -370,6 +377,8 @@ void setup() {
   Serial.begin(115200);
   Serial1.begin(GPSBAUD);
 
+
+  Serial.println(F("TekMow Robot Starting"));
   if (!radio.begin()) {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
@@ -406,13 +415,15 @@ void loop() {
     driveNS = STOP;
     robotNS = ROBOT_ERROR;
     Serial.println("Radio Link Failed");
+    failReason = "Radio not transmitting.";
+
   }
   
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
     /**********************|| Receving Command ||**********************/
     if (radio.available()) {
-      GetCommand();
-    }
+      if (GetCommand() == 1)
+        radioLinkTime = millis();
 
     /**********************|| Control Cycle ||**********************/
     if (driveNS != drivePS) {
@@ -450,7 +461,6 @@ void loop() {
       driveTime = millis();
       Stop();
       driveNS = STOP;
-      Serial.println("Drive WD Timer Hit!");
     }
   
     if (robotPS != ARMED)
@@ -471,15 +481,15 @@ void loop() {
       lastGps = millis();
       int box = inBox(coord1, coord2);
       if (box == 1) { //not in the box or no GPS
-        Serial.println("In the Box");
+        //Serial.println("In the Box");
         gpsNS = GPS_INBOUNDS;
       } else if (box == 2) {
-        Serial.println("Out of the Box");
+        //Serial.println("Out of the Box");
         Stop();
         driveNS = STOP;
         gpsNS = GPS_OUTBOUNDS;
       } else {
-        Serial.println("Invalid GPS");
+        //Serial.println("Invalid GPS");
         Stop();
         driveNS = STOP;
         gpsNS = GPS_ERROR;
@@ -493,10 +503,9 @@ void loop() {
     }
     
   } else { // This is what shold happen if the robot is in error mode. Should log info repeatedly.
-    Serial.println("Robot in ROBOT_ERROR state.");
+    Serial.println("Robot in ROBOT_ERROR state. Hard Reset to continue.");
     Serial.print("Cause: ");
-    Serial.println("Too be fixed");
-    
+    Serial.println(failReason);
     delay(10000);
   } // End if ROBOT_ERROR
 } // End loop()
