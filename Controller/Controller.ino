@@ -12,7 +12,7 @@
 
 typedef enum {
   FORWARD,
-  BACKWORDS,
+  BACKWARDS,
   LEFT,
   RIGHT,
   STOP,
