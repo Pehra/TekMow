@@ -27,8 +27,8 @@
 #define R_EN        7
 #define R_DIR       6
 
-#define ROBOT_ADDRESS "1Node"
-#define XMTR_ADDRESS "2Node"
+#define ROBOT_ADDRESS "MELVIN"
+#define XMTR_ADDRESS "XMTR00"
 
 uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
 
@@ -426,7 +426,7 @@ void loop() {
   
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
     /**********************|| Receving Command ||**********************/
-    if (radio.available()) {
+    if (radio.available()) 
       if (GetCommand() == 1)
         radioLinkTime = millis();
 

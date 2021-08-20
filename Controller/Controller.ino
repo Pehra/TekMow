@@ -110,7 +110,7 @@ void loop() {
     radio.read( &payload, size );
 
     switch (command){
-      case GPS_RESPONCE:
+      case GPS_RESPONSE:
         DecodePayload(size, payload);
         currentCoord[0] = floatUnion.Num[0];
         currentCoord[1] = floatUnion.Num[1];
@@ -118,11 +118,11 @@ void loop() {
         currentCoord[3] = floatUnion.Num[3];
         break;
       default:
-        Serial.println("Invalid Responce");
+        //Serial.println("Invalid Responce");
         break;
     }
     
-    if(command == GPS_RESPONCE){
+    if(command == GPS_RESPONSE){
       
     }else{
       
