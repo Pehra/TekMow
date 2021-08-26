@@ -19,13 +19,8 @@
 #include <TinyGPS++.h>
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
-
-// Defines for the motor controller. Only needed/used for the small robots.
-#define L_EN        5
-#define L_DIR       4
-#define R_EN        7
-#define R_DIR       6
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
 
 #define ROBOT_ADDRESS "MELVIN"
 #define XMTR_ADDRESS "XMTR00"
@@ -36,8 +31,7 @@ uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
 #define UPDATE_TIME   10000 // Time between sending GPS location back to controller
 #define GPSBAUD       9600
 
-class Safety
-{
+class Safety{
   public:
     Safety(int x_inputPin, int y_inputPin, int z_inputPin );
     int isLevel();
@@ -47,8 +41,11 @@ class Safety
     void plot_averages();
     void plot_values(int x, int y, int z);
     void calculate_average();
+    void setError();
 
   private:
+    char error[];
+    uint8_t error_size;
     int x, y, z;
     int x_pin, y_pin, z_pin;
     const int numReadings = 10;
@@ -68,28 +65,44 @@ class Safety
 
 };
 
+class Comm{
+  public:
+    Comm();
+    int GetCommand();
+    bool nrfDebugText(char* text, uint8_t size);
+    bool sendLocation(float latitude, float longitude);
+    void DecodePayload();
+    bool sendBuffer();
+    void fillBuff();
+
+  private:
+    uint8_t command;
+    uint8_t payload_size;
+    uint8_t send_size;
+    byte payload[30];
+    byte Buffer[32];
+    
+    union {//used to encode/ decode floats and strings to byte array
+      char str[28];
+      byte array[28];
+      float Num[7];
+    } payloadUnion;
+
+};
+
 /* Hardware configuration:
     Set up nRF24L01 radio on SPI bus plus pins 9 & 10
     Set Up GPS on RX1/TX1
 */
 RF24 radio(9, 10);
-
 TinyGPSPlus gps;
 Safety TekMow_safety(A0, A1, A2); // Creates the accelerometer object
-
-//used to encode/ decode floats to byte array
-union {
-  byte array[16];
-  float Num[4];
-} floatUnion;
+Comm TekMow_Comm; // Creates communication object
 
 Coord mycoord;
 Coord coord1 = {44.567480, -123.278915};
 Coord coord2 = {44.567232, -123.279307};
-
-byte payload[30];
 float box[4];
-uint8_t command, size;
 
 //State and timer variables
 unsigned long driveTime = 0;
@@ -104,97 +117,6 @@ volatile gpsStates gpsPS = GPS_OUTBOUNDS, gpsNS = GPS_OUTBOUNDS;
 volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
 String failReason = "No Failure";
-
-
-
-/*
- * Definition: this function is used to pull and decode the packet sent over NRF
- * 
- * Assumptions: the input buffer for the NRF has data in it 
- * and the data is formatted as shown below
- * 
- *        _________________________________________________
- *       |  Command  | Payload Size |       Payload        |
- *       |-------------------------------------------------|
- *       |  1 Byte   |    1 Byte    |      0-30 Bytes      |
- *       |-------------------------------------------------|
- *       
- * Output: state logic is set acording to the input command, Config data is set
- */
-
-int GetCommand() {
-  uint8_t command, size;
-  radio.read( &command, 1 );           // Get the command
-  radio.read( &size, 1 );              // Get the size
-  if (size > 0) {
-    radio.read( &payload, size );
-  }
-
-  switch (command) {
-    case FORWARD:
-    case BACKWARD:
-    case LEFT:
-    case RIGHT:
-    case STOP:
-      driveNS = command;
-      driveTime = millis();
-
-      return 1;
-
-    case SET_COORD:
-      DecodePayload(size, payload);
-      box[0] = floatUnion.Num[0];
-      box[1] = floatUnion.Num[1];
-      box[2] = floatUnion.Num[2];
-      box[3] = floatUnion.Num[3];
-
-      Serial.println(floatUnion.Num[0]);
-      Serial.println(floatUnion.Num[1]);
-      Serial.println(floatUnion.Num[2]);
-      Serial.println(floatUnion.Num[3]);
-      return 1;
-    case HEART_BEAT:
-      return 1;
-    default:
-      Serial.println("invalid command");
-      return 0;
-  }
-  return 0;
-}
-
-void nrfDebugText(String text){
-
-  
-}
-
-int inBox(Coord one, Coord two) {
-  if (gps.location.isValid()) {
-    if (gps.location.lat() < one.latitude
-        && gps.location.lat() > two.latitude
-        && gps.location.lng() < one.longitude
-        && gps.location.lng() > two.longitude)
-      return 1;//return 1 if it is
-    else
-      return 2;//return 2 if it isnt
-  } else
-    return 0;
-
-}
-
-boolean sendLocation(float latitude, float longitude) {
-  return 1;
-}
-
-
-
-/*
-   Definiton: Uses union to decode byte array into float
-*/
-void DecodePayload(int size, byte *input) {
-  for (int i = 0; i < size; i++) {
-    floatUnion.array[i] = input[i];
-  }
-}
 
 /*
  * Definition: exicutes non_blocking controle of the drive motors
@@ -224,41 +146,122 @@ void Drive(uint8_t driveCommand){
   }
 }
 
-void Forword() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, LOW);
+int inBox(Coord one, Coord two) {
+  if (gps.location.isValid()) {
+    if (gps.location.lat() < one.latitude
+        && gps.location.lat() > two.latitude
+        && gps.location.lng() < one.longitude
+        && gps.location.lng() > two.longitude)
+      return 1;//return 1 if it is
+    else
+      return 2;//return 2 if it isnt
+  } else
+    return 0;
+
 }
 
-void Backwards() {
-  digitalWrite(L_DIR, LOW);
-  digitalWrite(R_DIR, LOW);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, LOW);
+/**********************|| Comm ||**********************/
+Comm::Comm(){
+  
 }
 
-void Left() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, LOW);
+/*
+ * Definition: this function is used to pull and decode the packet sent over NRF
+ * 
+ * Assumptions: the input buffer for the NRF has data in it 
+ * and the data is formatted as shown below
+ * 
+ *        _________________________________________________
+ *       |  Command  | Payload Size |       Payload        |
+ *       |-------------------------------------------------|
+ *       |  1 Byte   |    1 Byte    |      0-30 Bytes      |
+ *       |-------------------------------------------------|
+ *       
+ * Output: state logic is set acording to the input command, Config data is set */
+int Comm::GetCommand() {
+  radio.read( &command, 1 );           // Get the command
+  radio.read( &payload_size, 1 );              // Get the size
+  if (payload_size > 0) {
+    radio.read( &payload, payload_size );
+  }
+
+  switch (command) {
+    case FORWARD:
+    case BACKWARD:
+    case LEFT:
+    case RIGHT:
+    case STOP:
+      driveNS = command;
+      driveTime = millis();
+
+      return 1;
+    case SET_COORD:
+      DecodePayload();
+      box[0] = payloadUnion.Num[0];
+      box[1] = payloadUnion.Num[1];
+      box[2] = payloadUnion.Num[2];
+      box[3] = payloadUnion.Num[3];
+
+      Serial.println(payloadUnion.Num[0]);
+      Serial.println(payloadUnion.Num[1]);
+      Serial.println(payloadUnion.Num[2]);
+      Serial.println(payloadUnion.Num[3]);
+      return 1;
+    case HEART_BEAT:
+      return 1;
+    case ECHO:
+      Buffer[0] = ECHO;
+      Buffer[1] = 4;
+      nrfDebugText('Echo', 4);
+      return 1;
+    default:
+      Serial.println("invalid command");
+      return 0;
+  }
+  return 0;
 }
 
-void Right() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, HIGH);
+bool Comm::nrfDebugText(char* text, uint8_t size){
+  send_size = size;
+  for(int i = 0; i < send_size; i++){
+    payloadUnion.str[i] = text[i];
+  }
+  fillBuff();
+  return sendBuffer();
 }
 
-void Stop() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, HIGH);
+bool Comm::sendLocation(float latitude, float longitude) {
+  return 1;
 }
 
+
+
+/*
+   Definiton: Uses union to decode byte array into float
+*/
+void Comm::DecodePayload() {
+  for (int i = 0; i < payload_size; i++) {
+    payloadUnion.array[i] = payload[i];
+  }
+}
+
+bool Comm::sendBuffer(){
+  radio.stopListening();
+  if(radio.write( &Buffer, Buffer[1]+2) ){
+    return 1;
+  }else{
+    return 0;
+  }
+  radio.startListening();
+}
+
+void Comm::fillBuff(){
+  for (int i = 0; i < send_size; i++) {
+      Buffer[2+i] = payloadUnion.array[i];      
+  }
+}
+
+/**********************|| Safety ||**********************/
 
 Safety::Safety(int x_inputPin, int y_inputPin, int z_inputPin )
 {
@@ -349,7 +352,6 @@ void Safety::plot_averages()
 
 }
 
-
 void Safety::calculate_average() {
 
   x = analogRead(x_pin);
@@ -396,15 +398,6 @@ void setup() {
 
   radio.startListening();
 
-  pinMode(L_EN, OUTPUT);
-  pinMode(L_DIR, OUTPUT);
-  pinMode(R_EN, OUTPUT);
-  pinMode(R_DIR, OUTPUT);
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, HIGH);
-
   drivePS = driveNS = STOP;
   driveTime = millis();
 }
@@ -427,7 +420,7 @@ void loop() {
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
     /**********************|| Receving Command ||**********************/
     if (radio.available()) 
-      if (GetCommand() == 1)
+      if (TekMow_Comm.GetCommand() == 1)
         radioLinkTime = millis();
 
     /**********************|| Control Cycle ||**********************/
@@ -503,7 +496,7 @@ void loop() {
     /**********************|| Send Data ||**********************/
   
     if (millis() > (locationUpdateTime + UPDATE_TIME)) {
-      sendLocation(mycoord.latitude, mycoord.longitude);
+      TekMow_Comm.sendLocation(mycoord.latitude, mycoord.longitude);
       locationUpdateTime = millis();
     }
     

@@ -10,8 +10,8 @@
 #include "RF24.h"
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
 
 #define WD 4000
 
@@ -19,8 +19,9 @@
 RF24 radio(9,10);
 
 union {
-   byte array[16];
-   float Num[4];
+  char str[28];
+  byte array[28];
+  float Num[7];
 } floatUnion;
 
 unsigned long heartBeatTimer;
@@ -46,6 +47,8 @@ uint8_t processSerialCommand(uint8_t incoming){
       return BACKWARD;
    case ' ':
       return STOP;
+   case 'e':
+      return ECHO;
    default:
       return incoming; 
   }
@@ -92,6 +95,10 @@ void loop() {
         fillBuff(16,2,floatUnion.array);
         sendBuffer();
         break;
+      case ECHO:
+        Buffer[1] = 0;
+        sendBuffer();
+        break;
       default:
         Serial.println("invalid command");
         break;
@@ -116,6 +123,10 @@ void loop() {
         currentCoord[1] = floatUnion.Num[1];
         currentCoord[2] = floatUnion.Num[2];
         currentCoord[3] = floatUnion.Num[3];
+        break;
+      case ECHO:
+        DecodePayload(size, payload);
+        Serial.println(floatUnion.str);
         break;
       default:
         //Serial.println("Invalid Responce");
