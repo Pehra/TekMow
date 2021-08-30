@@ -21,11 +21,7 @@
 // These files need to have thier locations updated before compile to match where you placed your files.
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
-
-#define ROBOT_ADDRESS "MELVIN"
-#define XMTR_ADDRESS "XMTR00"
-
-uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/Comm.c"
 
 #define MOVE_TIME     1000 // The default time beofee a motion watchdog time out.
 #define UPDATE_TIME   10000 // Time between sending GPS location back to controller
@@ -65,36 +61,10 @@ class Safety{
 
 };
 
-class Comm{
-  public:
-    Comm();
-    int GetCommand();
-    bool nrfDebugText(char* text, uint8_t size);
-    bool sendLocation(float latitude, float longitude);
-    void DecodePayload();
-    bool sendBuffer();
-    void fillBuff();
-
-  private:
-    uint8_t command;
-    uint8_t payload_size;
-    uint8_t send_size;
-    byte payload[30];
-    byte Buffer[32];
-    
-    union {//used to encode/ decode floats and strings to byte array
-      char str[28];
-      byte array[28];
-      float Num[7];
-    } payloadUnion;
-
-};
-
 /* Hardware configuration:
     Set up nRF24L01 radio on SPI bus plus pins 9 & 10
     Set Up GPS on RX1/TX1
 */
-RF24 radio(9, 10);
 TinyGPSPlus gps;
 Safety TekMow_safety(A0, A1, A2); // Creates the accelerometer object
 Comm TekMow_Comm; // Creates communication object
@@ -116,6 +86,7 @@ volatile uint8_t drivePS = STOP, driveNS = STOP;
 volatile gpsStates gpsPS = GPS_OUTBOUNDS, gpsNS = GPS_OUTBOUNDS;
 volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
+volatile commStates commState = READ;
 String failReason = "No Failure";
 
 /*
@@ -160,105 +131,33 @@ int inBox(Coord one, Coord two) {
 
 }
 
-/**********************|| Comm ||**********************/
-Comm::Comm(){
-  
-}
+int getCommand(){
+  //Grab Info and Payload packets
+  TekMow_Comm.pullPayload();
 
-/*
- * Definition: this function is used to pull and decode the packet sent over NRF
- * 
- * Assumptions: the input buffer for the NRF has data in it 
- * and the data is formatted as shown below
- * 
- *        _________________________________________________
- *       |  Command  | Payload Size |       Payload        |
- *       |-------------------------------------------------|
- *       |  1 Byte   |    1 Byte    |      0-30 Bytes      |
- *       |-------------------------------------------------|
- *       
- * Output: state logic is set acording to the input command, Config data is set */
-int Comm::GetCommand() {
-  radio.read( &command, 1 );           // Get the command
-  radio.read( &payload_size, 1 );              // Get the size
-  if (payload_size > 0) {
-    radio.read( &payload, payload_size );
-  }
-
-  switch (command) {
+  //Prosses based on Command
+  uint8_t newCommand = TekMow_Comm.getCommand();
+  switch (newCommand){
     case FORWARD:
     case BACKWARD:
     case LEFT:
     case RIGHT:
     case STOP:
-      driveNS = command;
+      driveNS = newCommand;
       driveTime = millis();
-
-      return 1;
+      break;
     case SET_COORD:
-      DecodePayload();
-      box[0] = payloadUnion.Num[0];
-      box[1] = payloadUnion.Num[1];
-      box[2] = payloadUnion.Num[2];
-      box[3] = payloadUnion.Num[3];
-
-      Serial.println(payloadUnion.Num[0]);
-      Serial.println(payloadUnion.Num[1]);
-      Serial.println(payloadUnion.Num[2]);
-      Serial.println(payloadUnion.Num[3]);
-      return 1;
+      break;
     case HEART_BEAT:
-      return 1;
+      break;
     case ECHO:
-      Buffer[0] = ECHO;
-      Buffer[1] = 4;
-      nrfDebugText('Echo', 4);
-      return 1;
+      commState = COMM_ECHO;
+      break;
     default:
       Serial.println("invalid command");
       return 0;
   }
-  return 0;
-}
-
-bool Comm::nrfDebugText(char* text, uint8_t size){
-  send_size = size;
-  for(int i = 0; i < send_size; i++){
-    payloadUnion.str[i] = text[i];
-  }
-  fillBuff();
-  return sendBuffer();
-}
-
-bool Comm::sendLocation(float latitude, float longitude) {
   return 1;
-}
-
-
-
-/*
-   Definiton: Uses union to decode byte array into float
-*/
-void Comm::DecodePayload() {
-  for (int i = 0; i < payload_size; i++) {
-    payloadUnion.array[i] = payload[i];
-  }
-}
-
-bool Comm::sendBuffer(){
-  radio.stopListening();
-  if(radio.write( &Buffer, Buffer[1]+2) ){
-    return 1;
-  }else{
-    return 0;
-  }
-  radio.startListening();
-}
-
-void Comm::fillBuff(){
-  for (int i = 0; i < send_size; i++) {
-      Buffer[2+i] = payloadUnion.array[i];      
-  }
 }
 
 /**********************|| Safety ||**********************/
@@ -386,18 +285,11 @@ void setup() {
 
 
   Serial.println(F("TekMow Robot Starting"));
-  if (!radio.begin()) {
+  if (!TekMow_Comm.initRadio(9,10,0)) {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
   }
-
-  radio.setPALevel(RF24_PA_LOW);
-
-  radio.openWritingPipe(addresses[0]);
-  radio.openReadingPipe(1, addresses[1]);
-
-  radio.startListening();
-
+  
   drivePS = driveNS = STOP;
   driveTime = millis();
 }
@@ -419,9 +311,10 @@ void loop() {
   
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
     /**********************|| Receving Command ||**********************/
-    if (radio.available()) 
-      if (TekMow_Comm.GetCommand() == 1)
+    if (TekMow_Comm.available()) 
+      if (getCommand()){
         radioLinkTime = millis();
+      }
 
     /**********************|| Control Cycle ||**********************/
     if (driveNS != drivePS) {
@@ -494,12 +387,33 @@ void loop() {
       }
     }
     /**********************|| Send Data ||**********************/
-  
+
+    //update location
     if (millis() > (locationUpdateTime + UPDATE_TIME)) {
       TekMow_Comm.sendLocation(mycoord.latitude, mycoord.longitude);
+      TekMow_Comm.sendPayload();
       locationUpdateTime = millis();
     }
-    
+
+    //Handle command reply's
+    if(commState != READ){
+      //Package data to send to controller
+      switch (commState){
+        case COMM_ECHO:
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
+          break;
+        default:
+          //Serial.println("Invalid Responce");
+          break;
+      }
+
+      //send data
+      TekMow_Comm.sendPayload();
+
+      //reset commState
+      commState = READ;
+    }
+        
   } else { // This is what shold happen if the robot is in error mode. Should log info repeatedly.
     Serial.println("Robot in ROBOT_ERROR state. Hard Reset to continue.");
     Serial.print("Cause: ");
