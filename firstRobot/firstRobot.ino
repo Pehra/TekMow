@@ -20,10 +20,12 @@
 
 // These files need to have thier locations updated before compile to match where you placed your files.
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
-#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/Comm.c"
 
-#define MOVE_TIME     1000 // The default time beofee a motion watchdog time out.
+//#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/vesc_mc.c"
+
+#define MOVE_TIME     4000 // The default time beofee a motion watchdog time out.
 #define UPDATE_TIME   10000 // Time between sending GPS location back to controller
 #define GPSBAUD       9600
 
@@ -94,6 +96,7 @@ String failReason = "No Failure";
  * 
  */
 void Drive(uint8_t driveCommand){
+  Serial.println(driveCommand);
   switch(driveCommand){
     case FORWARD:
       Forword();
@@ -289,7 +292,8 @@ void setup() {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
   }
-  
+
+  motor_init();
   drivePS = driveNS = STOP;
   driveTime = millis();
 }
@@ -320,6 +324,7 @@ void loop() {
     if (driveNS != drivePS) {
       Drive(driveNS);
       drivePS = driveNS;
+      driveTime = millis();
     }
   
     if (gpsNS != gpsPS) {
