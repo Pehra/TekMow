@@ -11,6 +11,7 @@ typedef enum {
   ECHO,
   ECHO_RESPONSE,
   GPS_RESPONSE,
+  JOY_DRIVE,
   
   DUMP_VARS,
   READ_DATA,

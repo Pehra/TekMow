@@ -6,6 +6,7 @@ union Payload{
   byte 	Byt[32];
   char 	Str[32];
   float Num[8];
+  short Int[16];
 };
 
 /*
@@ -45,6 +46,7 @@ class Comm{
 		
 		bool nrfDebugText(uint8_t newCommand, String text);
 		bool sendLocation(float latitude, float longitude);	
+		bool sendJoystick(int X, int Y);
 
 	private:
 		RF24 radio;
@@ -133,7 +135,7 @@ int Comm::pullPayload(){
 	}
 	
 	//Debug
-	if (false){
+	if (true){
 		Serial.println("Received Payload:");
 		Serial.print(Command);
 		Serial.print('|');
@@ -253,4 +255,14 @@ bool Comm::sendLocation(float latitude, float longitude) {
 	}
 	
 	return 1;
+}
+
+bool Comm::sendJoystick(int X, int Y){
+	//Set Size and Command
+	Size = 4;
+	Command = JOY_DRIVE;
+	
+	//Fill payload with two short ints
+	Buffer.Int[0] = X;
+	Buffer.Int[1] = Y;
 }

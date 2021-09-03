@@ -11,13 +11,14 @@
 
 // These files need to have thier locations updated before compile to match where you placed your files.
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
-#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
+#include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/Joystick.c"
 #include "C:/Users/pooki/Desktop/Tekbots/TekMow/TekMow/Comm.c"
 
 #define WD 4000
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 */
 Comm TekMow_Comm; // Creates communication object
+Joystick Joy;
 
 unsigned long heartBeatTimer;
 float currentCoord[4];
@@ -103,6 +104,7 @@ void setup() {
   Serial.println(F("Use WASD to move, SPACE to stop."));
   
   TekMow_Comm.initRadio(9,10,1);
+  Joy.calibration();
 }
 
 void loop() {
@@ -117,6 +119,15 @@ void loop() {
   
   if(TekMow_Comm.available()){
     getCommand();
+  }
+
+  /**********************|| Joystick Input ||**********************/
+
+  if(Joy.Alive()){
+    Joy.getValue();
+
+    TekMow_Comm.sendJoystick(Joy.X, Joy.Y);
+    TekMow_Comm.sendPayload();
   }
 
   /**********************|| Sending Heart Beat ||**********************/

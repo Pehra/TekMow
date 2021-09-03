@@ -45,3 +45,32 @@ void motor_init() {
 	pinMode(R_DIR, OUTPUT);
 	Stop();
 }
+
+//assumption: values are -100 -> 100
+void anlgDrive(int X, int Y){
+	//getting throttle values
+	int RSpeed = map(Y, -100 , 100, -255, 255);
+    int LSpeed = map(Y, -100 , 100, -255, 255);
+	
+	if(X < 0){
+		RSpeed = RSpeed + map(X, -100 , 0, 50, 0);
+		LSpeed = LSpeed - map(X, -100 , 0, 50, 0);
+	}else if(X > 0){
+		RSpeed = RSpeed - map(X, 0 , 100, 0, 50);
+		LSpeed = LSpeed + map(X, 0 , 100, 0, 50);
+	}
+	
+	//writing values
+	analogWrite(R_EN, 255 - abs(RSpeed));
+	analogWrite(L_EN, 255 - abs(LSpeed));
+	
+	if(RSpeed < 0)
+		digitalWrite(R_DIR, LOW);
+	else
+		digitalWrite(R_DIR, HIGH);
+	
+	if(LSpeed < 0)
+		digitalWrite(L_DIR, LOW);
+	else
+		digitalWrite(L_DIR, HIGH);
+}

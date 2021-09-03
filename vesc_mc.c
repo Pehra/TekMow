@@ -1,6 +1,6 @@
 // Defines for the motor controller.
-#define VESK_R_OUT  A6
-#define VESK_L_OUT  A7
+#define VESK_R_OUT  6
+#define VESK_L_OUT  5
 
 #include <Servo.h>
 
@@ -36,4 +36,21 @@ void motor_init() {
 	esc_L.attach(VESK_L_OUT);
 	esc_R.attach(VESK_R_OUT);
 	Stop();
+}
+
+//assumption: values are -100 -> 100
+void anlgDrive(int X, int Y){
+	int RSpeed = map(Y, -100 , 100, 1200, 1800);
+    int LSpeed = map(Y, -100 , 100, 1200, 1800);
+	
+	if(X < 0){
+		RSpeed = RSpeed + map(X, -100 , 0, 150, 50);
+		LSpeed = LSpeed - map(X, -100 , 0, 150, 50);
+	}else if(X > 0){
+		RSpeed = RSpeed - map(X, 0 , 100, 150, 50);
+		LSpeed = LSpeed + map(X, 0 , 100, 150, 50);
+	}
+	
+	esc_R.writeMicroseconds(RSpeed);
+	esc_L.writeMicroseconds(LSpeed);
 }

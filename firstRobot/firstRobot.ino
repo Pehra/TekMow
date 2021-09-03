@@ -71,10 +71,9 @@ TinyGPSPlus gps;
 Safety TekMow_safety(A0, A1, A2); // Creates the accelerometer object
 Comm TekMow_Comm; // Creates communication object
 
-Coord mycoord;
-Coord coord1 = {44.567480, -123.278915};
-Coord coord2 = {44.567232, -123.279307};
-float box[4];
+Coord currentCoord;
+Coord boxCorner1 = {44.567480, -123.278915};
+Coord boxCorner2 = {44.567232, -123.279307};
 
 //State and timer variables
 unsigned long driveTime = 0;
@@ -90,6 +89,7 @@ volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
 volatile commStates commState = READ;
 String failReason = "No Failure";
+bool GPSgood;
 
 /*
  * Definition: exicutes non_blocking controle of the drive motors
@@ -113,10 +113,35 @@ void Drive(uint8_t driveCommand){
     case STOP:
       Stop();
       break;
+    case JOY_DRIVE:
+      Payload Temp = TekMow_Comm.getPayload();
+      anlgDrive(Temp.Int[0], Temp.Int[1]);
+      break;
     default:
       Stop();
       Serial.println("drive command out of range!");
       break;
+  }
+}
+
+void getGPSdata(){
+  // feed the GPS object
+  while(Serial1.available())
+      gps.encode(Serial1.read());
+      
+  if (gps.location.isValid()){
+    GPSgood = true;
+    Serial.print(gps.location.lat());
+    Serial.print(" : ");
+    Serial.println(gps.location.lng());
+    
+    currentCoord.latitude = gps.location.lat();
+    currentCoord.longitude = gps.location.lng();
+  }else{
+    GPSgood = false;
+    Serial.print(gps.location.lat());
+    Serial.print(" : ");
+    Serial.println(gps.location.lng());
   }
 }
 
@@ -146,6 +171,10 @@ int getCommand(){
     case LEFT:
     case RIGHT:
     case STOP:
+      driveNS = newCommand;
+      driveTime = millis();
+      break;
+    case JOY_DRIVE:
       driveNS = newCommand;
       driveTime = millis();
       break;
@@ -321,7 +350,7 @@ void loop() {
       }
 
     /**********************|| Control Cycle ||**********************/
-    if (driveNS != drivePS) {
+    if(driveNS == JOY_DRIVE || (driveNS != drivePS && drivePS != JOY_DRIVE)){
       Drive(driveNS);
       drivePS = driveNS;
       driveTime = millis();
@@ -337,7 +366,7 @@ void loop() {
   
     if (robotNS != robotPS) {
       if (robotNS == ARMED) {
-        if (inBox(coord1, coord2) != 1) {
+        if (inBox(boxCorner1, boxCorner2) != 1) {
           Serial.println("Not in GPS Region");
           robotNS = robotPS;
         }
@@ -369,13 +398,9 @@ void loop() {
       }
   
     /**********************|| Read Sensors ||**********************/
-  
-    if (Serial1.available())
-      gps.encode(Serial1.read());
-  
     if (lastGps + 5000 < millis()) { //Checks if in Box every 5 seconds.
       lastGps = millis();
-      int box = inBox(coord1, coord2);
+      int box = inBox(boxCorner1, boxCorner2);
       if (box == 1) { //not in the box or no GPS
         //Serial.println("In the Box");
         gpsNS = GPS_INBOUNDS;
@@ -395,7 +420,8 @@ void loop() {
 
     //update location
     if (millis() > (locationUpdateTime + UPDATE_TIME)) {
-      TekMow_Comm.sendLocation(mycoord.latitude, mycoord.longitude);
+      getGPSdata();
+      TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
       TekMow_Comm.sendPayload();
       locationUpdateTime = millis();
     }
