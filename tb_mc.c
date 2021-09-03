@@ -1,8 +1,8 @@
 // Defines for the motor controller. Only needed/used for the small robots.
-#define L_EN        5
-#define L_DIR       4
-#define R_EN        7
-#define R_DIR       6
+#define R_EN        5
+#define R_DIR       4
+#define L_EN        7
+#define L_DIR       6
 
 void Forword() {
 	digitalWrite(L_DIR, HIGH);
@@ -52,12 +52,14 @@ void anlgDrive(int X, int Y){
 	int RSpeed = map(Y, -100 , 100, -255, 255);
     int LSpeed = map(Y, -100 , 100, -255, 255);
 	
-	if(X < 0){
-		RSpeed = RSpeed + map(X, -100 , 0, 50, 0);
-		LSpeed = LSpeed - map(X, -100 , 0, 50, 0);
-	}else if(X > 0){
-		RSpeed = RSpeed - map(X, 0 , 100, 0, 50);
-		LSpeed = LSpeed + map(X, 0 , 100, 0, 50);
+	uint8_t turnAmount = map(X, -100 , 100, 50, 50);
+	
+	if((X < 0 && Y > 0) || (X > 0 && Y < 0)){
+		RSpeed = RSpeed + turnAmount;
+		LSpeed = LSpeed - turnAmount;
+	}else if((X > 0 && Y > 0) || (X < 0 && Y < 0)){
+		RSpeed = RSpeed - turnAmount;
+		LSpeed = LSpeed + turnAmount;
 	}
 	
 	//writing values

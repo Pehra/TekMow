@@ -1,101 +1,156 @@
-#define JOY_X       A1     
-#define JOY_Y       A0  
-#define Button 		8
-#define DEAD        10 
+struct Position{
+	short X;
+	short Y;
+};
 
 class Joystick{
 	public:
-		Joystick(int x_pin, int y_pin, int dead);
+		Joystick(uint8_t x_pin, uint8_t y_pin, uint8_t dead, short stopSend);
 		
 		void calibration();
-		void getValue();
-		void Disp(); //do not capitalize functions
-		bool Alive();
+		short getX();
+		short getY();
+		void readPos();
+		void disp(); //do not capitalize functions
+		bool alive();
 		
 	private:
-		int cal_X, cal_Y, x_pin, y_pin, dead;
+		uint8_t x_pin, y_pin, dead;
+		int8_t x_mod = 1, y_mod = 1;
+		Position cal, pos, lower, upper;
+		unsigned long lastMove;
+		short stopSend;
 		
-		const int numReadings = 10;
-		int readIndex = 0;          // the index of the current reading
-		
-		int x_readings[10];      	// the readings from the A0 input
-		int xt = 0;               	// the running total for x
-		int xa = 0;                	// the average for x
-		int xd = 0;           		// difference between the average and the last x value
-
-		int y_readings[10];      	// the readings from the A1 input
-		int yt = 0;                 // the running total for y
-		int ya = 0;                	// the average for y
 
 };
 
 //Constructor for class 
-Joystick::Joystick(int x_pin, int y_pin){
-	x_pin = x_pin;
-	y_pin = y_pin;
+Joystick::Joystick(uint8_t x_pin, uint8_t y_pin, uint8_t dead, short stopSend){
+	this->x_pin = x_pin;
+	this->y_pin = y_pin;
+	this->dead = dead;
+	this->stopSend = stopSend;
+	lastMove = millis();
 }
 
-void Joystick::calibration(){
-	Serial.println("Keep your joystick in the center position...");//keep joysticked centered
-	delay(2500);//wait 2.5 seconds
+void Joystick::calibration(){	
+	Serial.println("Keep your joystick in the center position...\nwait...");//keep joysticked centered
+	delay(1000);
+	Serial.print("1...");
+	delay(1000);
+	Serial.print("2...");
+	delay(1000);
+	Serial.println("3!");
 	
-	cal_X = analogRead(X)-512;//read center x
-	cal_Y = analogRead(Y)-512;//read center y
+	cal.X = analogRead(x_pin);//read center x
+	cal.Y = analogRead(y_pin);//read center y
+	
+	lower.X = -cal.X;
+	lower.Y = -cal.Y;
+	upper.X = 1023 - cal.X;
+	upper.Y = 1023 - cal.Y;
+	
+	Serial.println("Keep your joystick in the forword position...\nwait...");//keep joysticked centered
+	delay(1000);
+	Serial.print("1...");
+	delay(1000);
+	Serial.print("2...");
+	delay(1000);
+	Serial.println("3!");
+	
+	readPos();
+	
+	if ( pos.X == 0){
+		if ( pos.Y < 0){
+			y_mod = -1;
+		}else if( pos.Y > 0){
+			y_mod = 1;
+		}
+	}else if( pos.Y == 0){
+		uint8_t temp = x_pin;
+		x_pin = y_pin;
+		y_pin = temp;
+		
+		if ( pos.X < 0){
+			y_mod = -1;
+		}else if( pos.X > 0){
+			y_mod = 1;
+		}
+	}else{
+		Serial.print("ERROR: joystick not strait");
+	}
+	
+	Serial.println("Keep your joystick in the right position...\nwait...");//keep joysticked centered
+	delay(1000);
+	Serial.print("1...");
+	delay(1000);
+	Serial.print("2...");
+	delay(1000);
+	Serial.println("3!");
+	
+	readPos();
+	
+	if ( pos.Y == 0){
+		if ( pos.X < 0){
+			x_mod = -1;
+		}else if( pos.X > 0){
+			x_mod = 1;
+		}
+	}else{
+		Serial.print("ERROR: joystick not strait");
+	}
+	
+	Serial.print("mod_x:"); Serial.println(x_mod);
+    Serial.print("mod_y:"); Serial.println(y_mod);
+	
 }
 
-void Joystick::getValue(){
+void Joystick::readPos(){
 	//Read potentiamiters
-	int Xvalue = analogRead(X)- cal_X;
-	int Yvalue = analogRead(Y)- cal_Y;
+	short Xvalue = analogRead(x_pin)- cal.X;
+	short Yvalue = analogRead(y_pin)- cal.Y;
 	
-	//Deadzone on X axis
-	if(Xvalue < -DEAD ){
-		Xvalue = map(Xvalue, -512, -DEAD, -100, -1);
-	}else if(Xvalue > DEAD){
-		Xvalue = map(Xvalue, DEAD, 512, 1, 100);
+	//Deadzone
+	if(Xvalue < -dead ){
+		Xvalue = map(Xvalue, lower.X, -dead , -100, -1);
+	}else if(Xvalue > dead){
+		Xvalue = map(Xvalue, dead , upper.X, 1, 100);
 	}else{
 		Xvalue = 0;
-	}
+	}	
 	
-	//Deadzone on Y axis
-	if(Xvalue < -DEAD ){
-		Xvalue = map(Xvalue, -512, -DEAD, -100, -1);
-	}else if(Xvalue > DEAD){
-		Xvalue = map(Xvalue, DEAD, 512, 1, 100);
+	if(Yvalue < -dead ){
+		Yvalue = map(Yvalue, lower.Y, -dead, -100, -1);
+	}else if(Yvalue > dead){
+		Yvalue = map(Yvalue, dead, upper.Y, 1, 100);
 	}else{
-		Xvalue = 0;
-	}
-	
-	X = Xvalue;
-	Y = Yvalue;
+		Yvalue = 0;
+	}	
+
+	pos.X = Xvalue * x_mod;
+	pos.Y = Yvalue * y_mod;
 }
 
-void Joystick::Disp(){
-	Serial.print("JOY_X:"); Serial.println(X);
-    Serial.print("JOY_Y:"); Serial.println(Y);
+short Joystick::getX(){
+	return pos.X;
 }
 
-bool Joystick::Alive(){
-	getValue();
+short Joystick::getY(){
+	return pos.Y;
+}
 
-	xt = xt - x_readings[readIndex];
-	yt = yt - y_readings[readIndex];
+void Joystick::disp(){
+	Serial.print("JOY_X:"); Serial.println(pos.X);
+    Serial.print("JOY_Y:"); Serial.println(pos.Y);
+}
 
-	x_readings[readIndex] = X;
-	y_readings[readIndex] = Y;
-
-	xt = xt + x_readings[readIndex];
-	yt = yt + y_readings[readIndex];
-
-	readIndex = readIndex + 1;
-
-	if (readIndex >= numReadings)
-	readIndex = 0;
-
-	xa = xt / numReadings;
-	ya = yt / numReadings;
+bool Joystick::alive(){
+	readPos();
 	
-	if(xa == 0 && ya == 0){
+	if(pos.X != 0 || pos.Y != 0){
+		lastMove = millis();
+		return true;
+	}else if(millis() > lastMove + stopSend){
 		return false;
 	}else{
 		return true;
