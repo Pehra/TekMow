@@ -1,12 +1,17 @@
 //Command List
 typedef enum {
+  NULL_COMM,
   FORWARD,
   BACKWARD,
   LEFT,
   RIGHT,
   STOP,
   SET_COORD,
+  HEART_BEAT,
+  ECHO,
+  ECHO_RESPONSE,
   GPS_RESPONSE,
+  JOY_DRIVE,
   
   DUMP_VARS,
   READ_DATA,
@@ -16,7 +21,6 @@ typedef enum {
   TRANSPORT_MODE,
   OPERATION_MODE,
   SHUT_DOWN,
-  HEART_BEAT,
   num_commands
 } commands;
 
@@ -36,6 +40,13 @@ typedef enum robotStates{
 	DISABLE,
 	ARMED,
 	ROBOT_ERROR
+};
+
+typedef enum commStates{
+	READ,
+	SEND_GPS,
+	COMM_ECHO,
+	SEND_ERROR
 };
 
 typedef enum batteryStates{

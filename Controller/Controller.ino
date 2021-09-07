@@ -11,28 +11,18 @@
 
 // These files need to have thier locations updated before compile to match where you placed your files.
 
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/Joystick.c"
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/Comm.c"
 
 #define WD 4000
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 */
-RF24 radio(9,10);
-
-union {
-   byte array[16];
-   float Num[4];
-} floatUnion;
+Comm TekMow_Comm; // Creates communication object
+Joystick Joy(A1, A0, 10, 1500);
 
 unsigned long heartBeatTimer;
 float currentCoord[4];
-byte payload[30];
-byte Buffer[32];
-
-#define ROBOT_ADDRESS "MELVIN"
-#define XMTR_ADDRESS "XMTR00"
-
-uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
-
 
 uint8_t processSerialCommand(uint8_t incoming){
   switch (incoming){
@@ -46,8 +36,66 @@ uint8_t processSerialCommand(uint8_t incoming){
       return BACKWARD;
    case ' ':
       return STOP;
+   case 'e':
+      return ECHO;
    default:
       return incoming; 
+  }
+}
+
+bool SendCommand(){
+  //Handle Serial input
+  uint8_t command = processSerialCommand(Serial.read());
+
+  //Fill payload
+  switch (command){
+    case FORWARD:
+    case BACKWARD:
+    case LEFT:
+    case RIGHT:
+    case STOP:
+      TekMow_Comm.setSize(0);
+      break;
+    case SET_COORD:
+      break;
+    case HEART_BEAT:
+      TekMow_Comm.setSize(0);
+      break;
+    case ECHO:
+      TekMow_Comm.setSize(0);
+      break;
+    default:
+      Serial.println("invalid command");
+      return 0;
+  }
+
+  //Set Command
+  TekMow_Comm.setCommand(command);
+    
+  //Send Payload
+  TekMow_Comm.sendPayload();
+
+  return 1;
+}
+
+void getCommand(){
+  //Grab Info and Payload packets
+  TekMow_Comm.pullPayload();
+
+  //Prosses based on Command
+  switch (TekMow_Comm.getCommand()){
+    case GPS_RESPONSE:
+      break;
+    case ECHO_RESPONSE:
+      Payload Temp = TekMow_Comm.getPayload();
+      for(int i = 0; i < TekMow_Comm.getSize(); i++){
+        Serial.print(Temp.Str[i]);
+      }
+      Serial.println(' ');
+      break;
+    default:
+      //Serial.println("Invalid Responce");
+      break;
   }
 }
 
@@ -56,109 +104,39 @@ void setup() {
   Serial.println(F("TekMow Transmitter Starting"));
   Serial.println(F("Use WASD to move, SPACE to stop."));
   
-  // initialize the transceiver on the SPI bus
-  if (!radio.begin()) {
-    Serial.println(F("radio hardware is not responding!!"));
-    while (1) {} // hold in infinite loop
-  }
-
-  radio.setPALevel(RF24_PA_LOW);
-  
-  radio.openWritingPipe(addresses[1]);
-  radio.openReadingPipe(1,addresses[0]);
-
-  radio.startListening();
+  TekMow_Comm.initRadio(9,10,1);
+  Joy.calibration();
 }
 
 void loop() {
   /**********************|| Sending Command ||**********************/
   if(Serial.available()){
-    uint8_t command = processSerialCommand(Serial.read());
-    //Serial.println(command);
-
-    Buffer[0] = command;
-    switch (command){
-      case FORWARD:
-      case BACKWARD:
-      case LEFT:
-      case RIGHT:
-      case STOP:
-        Buffer[1] = 0;
-        sendBuffer();
-        break;
-      case SET_COORD:
-        Buffer[1] = 16;
-        getCoord(floatUnion.Num);
-        fillBuff(16,2,floatUnion.array);
-        sendBuffer();
-        break;
-      default:
-        Serial.println("invalid command");
-        break;
+    if(SendCommand()){
+      heartBeatTimer = millis();
     }
-    
-    
-    
-  }/**********************|| Receving Radio ||**********************/
+  }
+
+  /**********************|| Receving Radio ||**********************/
   
-   //this section of code is untested
+  if(TekMow_Comm.available()){
+    getCommand();
+  }
 
-  if(radio.available()){
-    uint8_t command,size;
-    radio.read( &command, 1 );           // Get the command
-    radio.read( &size, 1 );              // Get the size
-    radio.read( &payload, size );
+  /**********************|| Joystick Input ||**********************/
 
-    switch (command){
-      case GPS_RESPONSE:
-        DecodePayload(size, payload);
-        currentCoord[0] = floatUnion.Num[0];
-        currentCoord[1] = floatUnion.Num[1];
-        currentCoord[2] = floatUnion.Num[2];
-        currentCoord[3] = floatUnion.Num[3];
-        break;
-      default:
-        //Serial.println("Invalid Responce");
-        break;
-    }
-    
-    if(command == GPS_RESPONSE){
-      
-    }else{
-      
-    }
+  if(Joy.alive() && true){
+    Joy.disp();
+    TekMow_Comm.sendJoystick(Joy.getX(), Joy.getY());
+    TekMow_Comm.sendPayload();
   }
 
   /**********************|| Sending Heart Beat ||**********************/
   if(millis() > (heartBeatTimer + WD)){
-    Buffer[0] = HEART_BEAT;
-    Buffer[1] = 1;
-//    Serial.println("<3");
-    sendBuffer();
-  }
-}
-
-bool sendBuffer(){
-  radio.stopListening();
-  if(radio.write( &Buffer, Buffer[1]+2) ){
-    heartBeatTimer = millis();
-  }else{
- //   Serial.println("Buffer was sent, but there was no Acknowledge. Reset Board to continue.");
- //   while (1);
-  }
-  
-  radio.startListening();
-}
-
-void fillBuff(int size, int index, byte *input){
-  for (int i = 0; i < size; i++) {
-      Buffer[index+i] = input[i];      
-  }
-}
-
-void DecodePayload(int size, byte *input){
-  for (int i = 0; i < size; i++) {
-      floatUnion.array[i] = input[i];      
+    TekMow_Comm.setCommand(HEART_BEAT);
+    TekMow_Comm.setSize(0);
+    if(TekMow_Comm.sendPayload()){
+      heartBeatTimer = millis();
+    }
   }
 }
 

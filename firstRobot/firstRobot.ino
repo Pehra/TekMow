@@ -19,25 +19,17 @@
 #include <TinyGPS++.h>
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/Comm.c"
 
-// Defines for the motor controller. Only needed/used for the small robots.
-#define L_EN        5
-#define L_DIR       4
-#define R_EN        7
-#define R_DIR       6
+#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
+//#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/vesc_mc.c"
 
-#define ROBOT_ADDRESS "MELVIN"
-#define XMTR_ADDRESS "XMTR00"
-
-uint8_t addresses[][6] = {ROBOT_ADDRESS, XMTR_ADDRESS};
-
-#define MOVE_TIME     1000 // The default time beofee a motion watchdog time out.
+#define MOVE_TIME     4000 // The default time beofee a motion watchdog time out.
 #define UPDATE_TIME   10000 // Time between sending GPS location back to controller
 #define GPSBAUD       9600
 
-class Safety
-{
+class Safety{
   public:
     Safety(int x_inputPin, int y_inputPin, int z_inputPin );
     int isLevel();
@@ -47,8 +39,11 @@ class Safety
     void plot_averages();
     void plot_values(int x, int y, int z);
     void calculate_average();
+    void setError();
 
   private:
+    char error[];
+    uint8_t error_size;
     int x, y, z;
     int x_pin, y_pin, z_pin;
     const int numReadings = 10;
@@ -72,24 +67,13 @@ class Safety
     Set up nRF24L01 radio on SPI bus plus pins 9 & 10
     Set Up GPS on RX1/TX1
 */
-RF24 radio(9, 10);
-
 TinyGPSPlus gps;
 Safety TekMow_safety(A0, A1, A2); // Creates the accelerometer object
+Comm TekMow_Comm; // Creates communication object
 
-//used to encode/ decode floats to byte array
-union {
-  byte array[16];
-  float Num[4];
-} floatUnion;
-
-Coord mycoord;
-Coord coord1 = {44.567480, -123.278915};
-Coord coord2 = {44.567232, -123.279307};
-
-byte payload[30];
-float box[4];
-uint8_t command, size;
+Coord currentCoord;
+Coord boxCorner1 = {44.567480, -123.278915};
+Coord boxCorner2 = {44.567232, -123.279307};
 
 //State and timer variables
 unsigned long driveTime = 0;
@@ -103,104 +87,16 @@ volatile uint8_t drivePS = STOP, driveNS = STOP;
 volatile gpsStates gpsPS = GPS_OUTBOUNDS, gpsNS = GPS_OUTBOUNDS;
 volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
 volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
+volatile commStates commState = READ;
 String failReason = "No Failure";
-
-
-
-/*
- * Definition: this function is used to pull and decode the packet sent over NRF
- * 
- * Assumptions: the input buffer for the NRF has data in it 
- * and the data is formatted as shown below
- * 
- *        _________________________________________________
- *       |  Command  | Payload Size |       Payload        |
- *       |-------------------------------------------------|
- *       |  1 Byte   |    1 Byte    |      0-30 Bytes      |
- *       |-------------------------------------------------|
- *       
- * Output: state logic is set acording to the input command, Config data is set
- */
-
-int GetCommand() {
-  uint8_t command, size;
-  radio.read( &command, 1 );           // Get the command
-  radio.read( &size, 1 );              // Get the size
-  if (size > 0) {
-    radio.read( &payload, size );
-  }
-
-  switch (command) {
-    case FORWARD:
-    case BACKWARD:
-    case LEFT:
-    case RIGHT:
-    case STOP:
-      driveNS = command;
-      driveTime = millis();
-
-      return 1;
-
-    case SET_COORD:
-      DecodePayload(size, payload);
-      box[0] = floatUnion.Num[0];
-      box[1] = floatUnion.Num[1];
-      box[2] = floatUnion.Num[2];
-      box[3] = floatUnion.Num[3];
-
-      Serial.println(floatUnion.Num[0]);
-      Serial.println(floatUnion.Num[1]);
-      Serial.println(floatUnion.Num[2]);
-      Serial.println(floatUnion.Num[3]);
-      return 1;
-    case HEART_BEAT:
-      return 1;
-    default:
-      Serial.println("invalid command");
-      return 0;
-  }
-  return 0;
-}
-
-void nrfDebugText(String text){
-
-  
-}
-
-int inBox(Coord one, Coord two) {
-  if (gps.location.isValid()) {
-    if (gps.location.lat() < one.latitude
-        && gps.location.lat() > two.latitude
-        && gps.location.lng() < one.longitude
-        && gps.location.lng() > two.longitude)
-      return 1;//return 1 if it is
-    else
-      return 2;//return 2 if it isnt
-  } else
-    return 0;
-
-}
-
-boolean sendLocation(float latitude, float longitude) {
-  return 1;
-}
-
-
-
-/*
-   Definiton: Uses union to decode byte array into float
-*/
-void DecodePayload(int size, byte *input) {
-  for (int i = 0; i < size; i++) {
-    floatUnion.array[i] = input[i];
-  }
-}
+bool GPSgood;
 
 /*
  * Definition: exicutes non_blocking controle of the drive motors
  * 
  */
 void Drive(uint8_t driveCommand){
+  Serial.println(driveCommand);
   switch(driveCommand){
     case FORWARD:
       Forword();
@@ -217,6 +113,10 @@ void Drive(uint8_t driveCommand){
     case STOP:
       Stop();
       break;
+    case JOY_DRIVE:
+      Payload Temp = TekMow_Comm.getPayload();
+      anlgDrive(Temp.Int[0], Temp.Int[1]);
+      break;
     default:
       Stop();
       Serial.println("drive command out of range!");
@@ -224,41 +124,77 @@ void Drive(uint8_t driveCommand){
   }
 }
 
-void Forword() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, LOW);
+void getGPSdata(){
+  // feed the GPS object
+  while(Serial1.available())
+      gps.encode(Serial1.read());
+      
+  Serial.println("GPS");
+  
+  if (gps.location.isValid()){
+    GPSgood = true;
+    Serial.print(gps.location.lat());
+    Serial.print(" : ");
+    Serial.println(gps.location.lng());
+    
+    currentCoord.latitude = gps.location.lat();
+    currentCoord.longitude = gps.location.lng();
+  }else{
+    GPSgood = false;
+    Serial.print(gps.location.lat());
+    Serial.print(" : ");
+    Serial.println(gps.location.lng());
+  }
 }
 
-void Backwards() {
-  digitalWrite(L_DIR, LOW);
-  digitalWrite(R_DIR, LOW);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, LOW);
+int inBox(Coord one, Coord two) {
+  if (gps.location.isValid()) {
+    if (gps.location.lat() < one.latitude
+        && gps.location.lat() > two.latitude
+        && gps.location.lng() < one.longitude
+        && gps.location.lng() > two.longitude)
+      return 1;//return 1 if it is
+    else
+      return 2;//return 2 if it isnt
+  } else
+    return 0;
+
 }
 
-void Left() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, LOW);
+int getCommand(){
+  //Grab Info and Payload packets
+  TekMow_Comm.pullPayload();
+
+  //Prosses based on Command
+  uint8_t newCommand = TekMow_Comm.getCommand();
+  switch (newCommand){
+    case FORWARD:
+    case BACKWARD:
+    case LEFT:
+    case RIGHT:
+    case STOP:
+      driveNS = newCommand;
+      driveTime = millis();
+      break;
+    case JOY_DRIVE:
+      driveNS = newCommand;
+      driveTime = millis();
+      break;
+    case SET_COORD:
+      break;
+    case HEART_BEAT:
+      break;
+    case ECHO:
+      commState = COMM_ECHO;
+      break;
+    default:
+      Serial.println("invalid command");
+      return 0;
+  }
+  return 1;
 }
 
-void Right() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, LOW);
-  digitalWrite(R_EN, HIGH);
-}
-
-void Stop() {
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, HIGH);
-}
-
+/**********************|| Safety ||**********************/
 
 Safety::Safety(int x_inputPin, int y_inputPin, int z_inputPin )
 {
@@ -349,7 +285,6 @@ void Safety::plot_averages()
 
 }
 
-
 void Safety::calculate_average() {
 
   x = analogRead(x_pin);
@@ -384,27 +319,12 @@ void setup() {
 
 
   Serial.println(F("TekMow Robot Starting"));
-  if (!radio.begin()) {
+  if (!TekMow_Comm.initRadio(9,10,0)) {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
   }
 
-  radio.setPALevel(RF24_PA_LOW);
-
-  radio.openWritingPipe(addresses[0]);
-  radio.openReadingPipe(1, addresses[1]);
-
-  radio.startListening();
-
-  pinMode(L_EN, OUTPUT);
-  pinMode(L_DIR, OUTPUT);
-  pinMode(R_EN, OUTPUT);
-  pinMode(R_DIR, OUTPUT);
-  digitalWrite(L_DIR, HIGH);
-  digitalWrite(R_DIR, HIGH);
-  digitalWrite(L_EN, HIGH);
-  digitalWrite(R_EN, HIGH);
-
+  motor_init();
   drivePS = driveNS = STOP;
   driveTime = millis();
 }
@@ -426,14 +346,16 @@ void loop() {
   
   if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
     /**********************|| Receving Command ||**********************/
-    if (radio.available()) 
-      if (GetCommand() == 1)
+    if (TekMow_Comm.available()) 
+      if (getCommand()){
         radioLinkTime = millis();
+      }
 
     /**********************|| Control Cycle ||**********************/
-    if (driveNS != drivePS) {
+    if(driveNS == JOY_DRIVE || (driveNS != drivePS && drivePS != JOY_DRIVE)){
       Drive(driveNS);
       drivePS = driveNS;
+      driveTime = millis();
     }
   
     if (gpsNS != gpsPS) {
@@ -446,7 +368,7 @@ void loop() {
   
     if (robotNS != robotPS) {
       if (robotNS == ARMED) {
-        if (inBox(coord1, coord2) != 1) {
+        if (inBox(boxCorner1, boxCorner2) != 1) {
           Serial.println("Not in GPS Region");
           robotNS = robotPS;
         }
@@ -478,13 +400,9 @@ void loop() {
       }
   
     /**********************|| Read Sensors ||**********************/
-  
-    if (Serial1.available())
-      gps.encode(Serial1.read());
-  
     if (lastGps + 5000 < millis()) { //Checks if in Box every 5 seconds.
       lastGps = millis();
-      int box = inBox(coord1, coord2);
+      int box = inBox(boxCorner1, boxCorner2);
       if (box == 1) { //not in the box or no GPS
         //Serial.println("In the Box");
         gpsNS = GPS_INBOUNDS;
@@ -501,12 +419,34 @@ void loop() {
       }
     }
     /**********************|| Send Data ||**********************/
-  
+
+    //update location
     if (millis() > (locationUpdateTime + UPDATE_TIME)) {
-      sendLocation(mycoord.latitude, mycoord.longitude);
+      getGPSdata();
+      TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
+      TekMow_Comm.sendPayload();
       locationUpdateTime = millis();
     }
-    
+
+    //Handle command reply's
+    if(commState != READ){
+      //Package data to send to controller
+      switch (commState){
+        case COMM_ECHO:
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
+          break;
+        default:
+          //Serial.println("Invalid Responce");
+          break;
+      }
+
+      //send data
+      TekMow_Comm.sendPayload();
+
+      //reset commState
+      commState = READ;
+    }
+        
   } else { // This is what shold happen if the robot is in error mode. Should log info repeatedly.
     Serial.println("Robot in ROBOT_ERROR state. Hard Reset to continue.");
     Serial.print("Cause: ");
