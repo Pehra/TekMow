@@ -313,6 +313,11 @@ void Safety::calculate_average() {
   za = zt / numReadings;
 }
 
+void shutDown(){
+  Stop();
+  drivePS = driveNS = STOP;
+}
+
 void setup() {
   Serial.begin(115200);
   Serial1.begin(GPSBAUD);
@@ -334,123 +339,112 @@ void setup() {
    state logic and watchdog timers
 */
 void loop() {
-
+  /**********************|| Receving Command ||**********************/
+  if (TekMow_Comm.available()){
+    if (getCommand()){
+      radioLinkTime = millis();
+    }
+  }
+     
   if (millis() > (radioLinkTime + 10000)) { // This is the radio link timer
-    Stop();
-    driveNS = STOP;
+    shutDown();
     robotNS = ROBOT_ERROR;
     Serial.println("Radio Link Failed");
     failReason = "Radio not transmitting.";
-
   }
-  
-  if (robotPS != ROBOT_ERROR && robotNS != ROBOT_ERROR){ // If we are in this error mode, the only thing we can do is reset robot.
-    /**********************|| Receving Command ||**********************/
-    if (TekMow_Comm.available()) 
-      if (getCommand()){
-        radioLinkTime = millis();
-      }
 
-    /**********************|| Control Cycle ||**********************/
-    if(driveNS == JOY_DRIVE || (driveNS != drivePS && drivePS != JOY_DRIVE)){
-      Drive(driveNS);
-      drivePS = driveNS;
-      driveTime = millis();
-    }
-  
-    if (gpsNS != gpsPS) {
-      gpsPS = gpsNS;
-    }
-  
-    if (motionNS != motionPS) {
-      motionPS = motionNS;
-    }
-  
-    if (robotNS != robotPS) {
-      if (robotNS == ARMED) {
-        if (inBox(boxCorner1, boxCorner2) != 1) {
-          Serial.println("Not in GPS Region");
-          robotNS = robotPS;
-        }
-        if (TekMow_safety.isStable() != 1) {
-          Serial.println("Not Level");
-          robotNS = robotPS;
-        }
-        if (millis() < stableTime + 10000) {
-          Serial.println("Not Stable");
-          robotNS = robotPS;
-        }
+  /****Idel state: if there isnt an error the robot can do things****/
+  if (robotNS != ROBOT_ERROR){
+    /**********************|| Read Sensors ||**********************/
+    if (lastGps + 5000 < millis()) { //Checks if in Box every 5 seconds.
+      lastGps = millis();
+      getGPSdata();
+      
+      int box = inBox(boxCorner1, boxCorner2);
+      if (box == 1) { 
+        gpsNS = GPS_INBOUNDS;
+      } else if (box == 2) {
+        gpsNS = GPS_OUTBOUNDS;
+      } else {
+        gpsNS = GPS_ERROR;
       }
-      robotPS = robotNS;
     }
-  
+
+    //read accel
+    if (millis() > (motionTime + 5)) {
+      motionTime = millis();
+      // Take new measurements and average
+      TekMow_safety.calculate_average();
+      if (TekMow_safety.isStable())
+        stableTime = millis();
+    }
+
+    /**********************|| Safty Checks ||**********************/
+     //Drive WD
     if (millis() > (driveTime + MOVE_TIME)) {
       driveTime = millis();
       Stop();
       driveNS = STOP;
     }
-  
-    if (robotPS != ARMED)
-      if (millis() > (motionTime + 5)) {
-        motionTime = millis();
-        // Take new measurements and average
-        TekMow_safety.calculate_average();
-        if (TekMow_safety.isStable() != 1)
-          stableTime = millis();
+
+    //Check GPS box
+    if (gpsNS = GPS_OUTBOUNDS) {
+      Serial.println("Not in GPS Region");
+      robotNS = DISABLE;
+      gpsPS = gpsNS;
+    }
+
+    //Check if stable
+    if (millis() < stableTime + 10000) {
+      Serial.println("Not Stable");
+      robotNS = DISABLE;
+    }
+
+    /**********************|| Control Cycle ||**********************/
+    /****Controle state: If it is safe the robot can move and mow****/
+    if(robotNS == DISABLE){
+      Drive(STOP);
+    }else{
+      //Driving
+      if(driveNS == JOY_DRIVE || (driveNS != drivePS && drivePS != JOY_DRIVE)){ //joystick overides serial motion commands
+        Drive(driveNS);
+        drivePS = driveNS;
       }
   
-    /**********************|| Read Sensors ||**********************/
-    if (lastGps + 5000 < millis()) { //Checks if in Box every 5 seconds.
-      lastGps = millis();
-      int box = inBox(boxCorner1, boxCorner2);
-      if (box == 1) { //not in the box or no GPS
-        //Serial.println("In the Box");
-        gpsNS = GPS_INBOUNDS;
-      } else if (box == 2) {
-        //Serial.println("Out of the Box");
-        Stop();
-        driveNS = STOP;
-        gpsNS = GPS_OUTBOUNDS;
-      } else {
-        //Serial.println("Invalid GPS");
-        Stop();
-        driveNS = STOP;
-        gpsNS = GPS_ERROR;
+      //Mowing
+      if(robotNS == MOW){
+        robotPS = robotNS;
       }
     }
-    /**********************|| Send Data ||**********************/
 
-    //update location
-    if (millis() > (locationUpdateTime + UPDATE_TIME)) {
-      getGPSdata();
-      TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
-      TekMow_Comm.sendPayload();
-      locationUpdateTime = millis();
-    }
-
-    //Handle command reply's
-    if(commState != READ){
-      //Package data to send to controller
-      switch (commState){
-        case COMM_ECHO:
-          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
-          break;
-        default:
-          //Serial.println("Invalid Responce");
-          break;
-      }
-
-      //send data
-      TekMow_Comm.sendPayload();
-
-      //reset commState
-      commState = READ;
-    }
-        
-  } else { // This is what shold happen if the robot is in error mode. Should log info repeatedly.
-    Serial.println("Robot in ROBOT_ERROR state. Hard Reset to continue.");
+    /****Error state: If we are in this error mode, the only thing we can do is communicate****/
+  } else { 
+    Serial.println("Robot in ROBOT_ERROR state!");
     Serial.print("Cause: ");
     Serial.println(failReason);
     delay(10000);
   } // End if ROBOT_ERROR
+
+  /**********************|| Reply ||**********************/
+  if(commState != READ){
+    //Package data to send to controller
+    switch (commState){
+      case COMM_ECHO:
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
+        break;
+      case SEND_GPS:
+        TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
+        break;
+      default:
+        //Serial.println("Invalid Responce");
+        break;
+    }
+  
+    //send data
+    TekMow_Comm.sendPayload();
+  
+    //reset commState
+    commState = READ;
+  }
+    
 } // End loop()

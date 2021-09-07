@@ -34,12 +34,12 @@ Joystick::Joystick(uint8_t x_pin, uint8_t y_pin, uint8_t dead, short stopSend){
 }
 
 void Joystick::calibration(){	
-	Serial.println("Keep your joystick in the center position...\nwait...");//keep joysticked centered
-	delay(1000);
+	Serial.println("Keep your joystick in the center position...\nwait...");
+	delay(700);
 	Serial.print("1...");
-	delay(1000);
+	delay(700);
 	Serial.print("2...");
-	delay(1000);
+	delay(700);
 	Serial.println("3!");
 	
 	cal.X = analogRead(x_pin);//read center x
@@ -50,15 +50,11 @@ void Joystick::calibration(){
 	upper.X = 1023 - cal.X;
 	upper.Y = 1023 - cal.Y;
 	
-	Serial.println("Keep your joystick in the forword position...\nwait...");//keep joysticked centered
-	delay(1000);
-	Serial.print("1...");
-	delay(1000);
-	Serial.print("2...");
-	delay(1000);
-	Serial.println("3!");
+	Serial.println("move your joystick to the forword position...\nwait...");
 	
-	readPos();
+	do{
+		readPos();
+	}while(!((pos.X == 0 && pos.Y != 0) || (pos.X != 0 && pos.Y == 0)));
 	
 	if ( pos.X == 0){
 		if ( pos.Y < 0){
@@ -76,28 +72,18 @@ void Joystick::calibration(){
 		}else if( pos.X > 0){
 			y_mod = 1;
 		}
-	}else{
-		Serial.print("ERROR: joystick not strait");
 	}
 	
-	Serial.println("Keep your joystick in the right position...\nwait...");//keep joysticked centered
-	delay(1000);
-	Serial.print("1...");
-	delay(1000);
-	Serial.print("2...");
-	delay(1000);
-	Serial.println("3!");
+	Serial.println("move your joystick to the right position...\nwait...");
 	
-	readPos();
+	do{
+		readPos();
+	}while(!(pos.X != 0 && pos.Y == 0));
 	
-	if ( pos.Y == 0){
-		if ( pos.X < 0){
-			x_mod = -1;
-		}else if( pos.X > 0){
-			x_mod = 1;
-		}
-	}else{
-		Serial.print("ERROR: joystick not strait");
+	if ( pos.X < 0){
+		x_mod = -1;
+	}else if( pos.X > 0){
+		x_mod = 1;
 	}
 	
 	Serial.print("mod_x:"); Serial.println(x_mod);
