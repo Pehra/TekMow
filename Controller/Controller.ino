@@ -128,6 +128,7 @@ void loop() {
     Joy.disp();
     TekMow_Comm.sendJoystick(Joy.getX(), Joy.getY());
     TekMow_Comm.sendPayload();
+    heartBeatTimer = millis();
   }
 
   /**********************|| Sending Heart Beat ||**********************/

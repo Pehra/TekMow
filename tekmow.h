@@ -39,6 +39,7 @@ typedef enum motionStates{
 typedef enum robotStates{
 	DISABLE,
 	ARMED,
+	MOW,
 	ROBOT_ERROR
 };
 
