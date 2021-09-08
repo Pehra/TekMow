@@ -13,13 +13,16 @@ typedef enum {
   GPS_RESPONSE,
   JOY_DRIVE,
   
+  
+  COMM_ARM,
+  COMM_DISABLE,
+  COMM_MOW,
+  
+  
   DUMP_VARS,
   READ_DATA,
   BLADE_ON,
   BLADE_OFF,
-  IDLE_MODE,
-  TRANSPORT_MODE,
-  OPERATION_MODE,
   SHUT_DOWN,
   num_commands
 } commands;
@@ -37,9 +40,9 @@ typedef enum motionStates{
 };
 
 typedef enum robotStates{
-	DISABLE,
-	ARMED,
-	MOW,
+	ROBOT_DISABLE,
+	ROBOT_ARMED,
+	ROBOT_MOW,
 	ROBOT_ERROR
 };
 

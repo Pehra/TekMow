@@ -1,14 +1,9 @@
 /*
- * Notes: currnetly this code can read commands from the controller. 
- * The drive funtion was changed to non blocking and stoped working, 
- * some fixes were made but they are untested. The decoding of NRF 
- * data was moved to the function GetCommand() and a switch function 
- * is now used instead of if statements. these changes dont have 
- * compiler errors but arnt tested.
+ * TekMow Robot Code
+ * September 2021
  * 
- * next steps are to impliment the Comm and Controller class instead 
- * of current layout. I think making a error, state, and config struct 
- * and/or class may also be helpfull.
+ * This demo project uses an NRF24L01 RF link to drive a mowing robot. THe code is based on software state machines that implement 
+ * the robot functions. A basic set of commands is predefined.
  * 
  * 
  */
@@ -19,16 +14,19 @@
 #include <TinyGPS++.h>
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/tekmow.h"
-#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/Comm.c"
+#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
+#include "C:/Users/Don/Desktop/TekMow/Comm.c"
 
-#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/tb_mc.c"
+// Only include one of the files below base don the mototr controller type used
+#include "C:/Users/Don/Desktop/TekMow/tb_mc.c"
 //#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/vesc_mc.c"
 
-#define MOVE_TIME     4000 // The default time beofee a motion watchdog time out.
-#define UPDATE_TIME   10000 // Time between sending GPS location back to controller
-#define GPSBAUD       9600
+#define MOVE_TIME     4000 // The default time (in milliseconds) before a motion watchdog time out.
+#define UPDATE_TIME   10000 // Time (in milliseconds) between sending GPS location back to controller
+#define GPSBAUD       9600 // Baud rate for the GPS
 
+
+// This is the class implementation for the accelerometer.
 class Safety{
   public:
     Safety(int x_inputPin, int y_inputPin, int z_inputPin );
@@ -42,7 +40,6 @@ class Safety{
     void setError();
 
   private:
-    char error[];
     uint8_t error_size;
     int x, y, z;
     int x_pin, y_pin, z_pin;
@@ -78,15 +75,18 @@ Coord boxCorner2 = {44.567232, -123.279307};
 //State and timer variables
 unsigned long driveTime = 0;
 unsigned long locationUpdateTime = 0;
-unsigned long lastGps = 0;
+unsigned long lastGpsTime = 0;
 unsigned long stableTime = 0;
 unsigned long motionTime = 0;
 unsigned long radioLinkTime = 0;
 
+#define RADIO_TIMEOUT 10000
+#define GPS_TIMEOUT 5000
+
 volatile uint8_t drivePS = STOP, driveNS = STOP;
 volatile gpsStates gpsPS = GPS_OUTBOUNDS, gpsNS = GPS_OUTBOUNDS;
 volatile motionStates motionPS = RECENTMOTION, motionNS = RECENTMOTION;
-volatile robotStates robotPS = DISABLE, robotNS = DISABLE;
+volatile robotStates robotPS = ROBOT_DISABLE, robotNS = ROBOT_DISABLE;
 volatile commStates commState = READ;
 String failReason = "No Failure";
 bool GPSgood;
@@ -95,8 +95,8 @@ bool GPSgood;
  * Definition: exicutes non_blocking controle of the drive motors
  * 
  */
-void Drive(uint8_t driveCommand){
-  Serial.println(driveCommand);
+int Drive(uint8_t driveCommand){
+//  Serial.println(driveCommand);
   switch(driveCommand){
     case FORWARD:
       Forword();
@@ -115,35 +115,37 @@ void Drive(uint8_t driveCommand){
       break;
     case JOY_DRIVE:
       Payload Temp = TekMow_Comm.getPayload();
-      anlgDrive(Temp.Int[0], Temp.Int[1]);
+      anlgDrive(Temp.ints[0], Temp.ints[1]);
       break;
     default:
       Stop();
       Serial.println("drive command out of range!");
+      return 0;
       break;
   }
+  return 1;
 }
 
-void getGPSdata(){
+int getGPSdata(){
   // feed the GPS object
   while(Serial1.available())
       gps.encode(Serial1.read());
       
-  Serial.println("GPS");
+//  Serial.println("GPS");
   
   if (gps.location.isValid()){
-    GPSgood = true;
-    Serial.print(gps.location.lat());
-    Serial.print(" : ");
-    Serial.println(gps.location.lng());
+//    Serial.print(gps.location.lat());
+//    Serial.print(" : ");
+//    Serial.println(gps.location.lng());
     
     currentCoord.latitude = gps.location.lat();
     currentCoord.longitude = gps.location.lng();
+    return true;
   }else{
-    GPSgood = false;
-    Serial.print(gps.location.lat());
-    Serial.print(" : ");
-    Serial.println(gps.location.lng());
+//    Serial.print(gps.location.lat());
+//   Serial.print(" : ");
+//    Serial.println(gps.location.lng());
+    return false;
   }
 }
 
@@ -153,11 +155,11 @@ int inBox(Coord one, Coord two) {
         && gps.location.lat() > two.latitude
         && gps.location.lng() < one.longitude
         && gps.location.lng() > two.longitude)
-      return 1;//return 1 if it is
+      return 1;//return 1 if it is in the box
     else
-      return 2;//return 2 if it isnt
+      return 2;//return 2 if it is not in the box
   } else
-    return 0;
+    return 0; //return 0 if there is a GPS error
 
 }
 
@@ -165,7 +167,7 @@ int getCommand(){
   //Grab Info and Payload packets
   TekMow_Comm.pullPayload();
 
-  //Prosses based on Command
+  //Processes based on Command
   uint8_t newCommand = TekMow_Comm.getCommand();
   switch (newCommand){
     case FORWARD:
@@ -173,25 +175,36 @@ int getCommand(){
     case LEFT:
     case RIGHT:
     case STOP:
-      driveNS = newCommand;
-      driveTime = millis();
-      break;
     case JOY_DRIVE:
-      driveNS = newCommand;
-      driveTime = millis();
+      if (robotPS == ROBOT_ARMED || robotPS == ROBOT_MOW){
+        driveNS = newCommand;
+        driveTime = millis();
+        if (Drive(driveNS) == 1)
+          drivePS = driveNS;
+        return 1;
+      }
       break;
     case SET_COORD:
-      break;
+      return 1;
     case HEART_BEAT:
-      break;
+      return 1;
     case ECHO:
       commState = COMM_ECHO;
-      break;
+      return 1;
+    case COMM_ARM:
+      robotNS = ROBOT_ARMED;
+      return 1;
+    case COMM_MOW:
+      robotNS = ROBOT_MOW;
+      return 1;
+    case COMM_DISABLE:
+      robotNS = ROBOT_DISABLE;
+      return 1;
     default:
       Serial.println("invalid command");
       return 0;
   }
-  return 1;
+  
 }
 
 /**********************|| Safety ||**********************/
@@ -209,11 +222,11 @@ Safety::isLevel()
   y = analogRead(y_pin);
   z = analogRead(z_pin);
 
-  if (x >= 310 && x <= 350 && y >= 310 && y <= 350 && z > 350)
+  if (x >= 310 && x <= 350 && y >= 310 && y <= 350 && z > 350) // x and y axis are near 0G and the robot is right side up.
   {
-    return 1;
+    return 1; // Return we are level
   } else {
-    return 0;
+    return 0; // Return we are not level.
   }
 }
 
@@ -234,7 +247,7 @@ Safety::isStable()
   }
 }
 
-void Safety:: print_values(int x, int y, int z)
+void Safety::print_values(int x, int y, int z)
 {
   // send it to the computer as ASCII digits
   Serial.print("X reading ");
@@ -313,18 +326,25 @@ void Safety::calculate_average() {
   za = zt / numReadings;
 }
 
-void shutDown(){
+void stopRobot(){
   Stop();
   drivePS = driveNS = STOP;
 }
 
-void setup() {
-  Serial.begin(115200);
-  Serial1.begin(GPSBAUD);
+void startMow() { //Activate mowing relay
+  return;
+}
 
+void stopMow() { //Deactivate mowing relay
+  return;
+}
+
+void setup() {
+  Serial.begin(115200); // Sets up debug serial monitor
+  Serial1.begin(GPSBAUD); // Connection to GPS
 
   Serial.println(F("TekMow Robot Starting"));
-  if (!TekMow_Comm.initRadio(9,10,0)) {
+  if (!TekMow_Comm.initRadio(9,10,1)) {
     Serial.println(F("radio hardware is not responding!!"));
     while (1); // hold in infinite loop
   }
@@ -346,75 +366,119 @@ void loop() {
     }
   }
      
-  if (millis() > (radioLinkTime + 10000)) { // This is the radio link timer
-    shutDown();
+  if (millis() > (radioLinkTime + RADIO_TIMEOUT)) { 
+    stopRobot();
     robotNS = ROBOT_ERROR;
     Serial.println("Radio Link Failed");
     failReason = "Radio not transmitting.";
   }
 
-  /****Idel state: if there isnt an error the robot can do things****/
-  if (robotNS != ROBOT_ERROR){
+  /****Idle state: if there isnt an error the robot can do things****/
+  if (robotNS != ROBOT_ERROR && robotPS != ROBOT_ERROR){
     /**********************|| Read Sensors ||**********************/
-    if (lastGps + 5000 < millis()) { //Checks if in Box every 5 seconds.
-      lastGps = millis();
-      getGPSdata();
-      
-      int box = inBox(boxCorner1, boxCorner2);
-      if (box == 1) { 
-        gpsNS = GPS_INBOUNDS;
-      } else if (box == 2) {
-        gpsNS = GPS_OUTBOUNDS;
-      } else {
-        gpsNS = GPS_ERROR;
+    
+    if (robotPS == ROBOT_DISABLE){ //Do things that only need ot happen when not armed or mowing
+      //Calculate running average for stabliity testing. Only to be done when not armed or mowing.
+      if (millis() > (motionTime + 5)) {
+        motionTime = millis();
+        // Take new measurements and average
+        TekMow_safety.calculate_average();
+        if (TekMow_safety.isStable())
+          stableTime = millis();
       }
     }
-
-    //read accel
-    if (millis() > (motionTime + 5)) {
-      motionTime = millis();
-      // Take new measurements and average
-      TekMow_safety.calculate_average();
-      if (TekMow_safety.isStable())
-        stableTime = millis();
+    
+    if (lastGpsTime + 50 < millis()){ // Always be reading from the Serial port to avoid missing GPS messages (50mS)
+      GPSgood = getGPSdata();
+      lastGpsTime = millis();
+    }
+    
+    if (locationUpdateTime + GPS_TIMEOUT < millis()) { //Checks if in Box every 5 seconds.
+      locationUpdateTime = millis();
+      int box = inBox(boxCorner1, boxCorner2);
+        if (box == 1) { 
+          gpsNS = GPS_INBOUNDS;
+        } else if (box == 2) {
+          gpsNS = GPS_OUTBOUNDS;
+        } else {
+          gpsNS = GPS_ERROR;
+        }
     }
 
-    /**********************|| Safty Checks ||**********************/
-     //Drive WD
-    if (millis() > (driveTime + MOVE_TIME)) {
+
+    /**********************|| Safty Checks ||********************
+    This section is for checks that should always be running regardless of robot state
+    **/
+    
+    if (millis() > (driveTime + MOVE_TIME)) { // Drive Watchdog Timer
       driveTime = millis();
       Stop();
       driveNS = STOP;
+      TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Drive Watchdog Elapsed");
     }
 
     //Check GPS box
-    if (gpsNS = GPS_OUTBOUNDS) {
-      Serial.println("Not in GPS Region");
-      robotNS = DISABLE;
+    if (gpsNS == GPS_OUTBOUNDS) {
+//      Serial.println("Not in GPS Region");
+      TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot Not in GPS Region");
+      robotNS = ROBOT_DISABLE;
       gpsPS = gpsNS;
     }
 
-    //Check if stable
-    if (millis() < stableTime + 10000) {
-      Serial.println("Not Stable");
-      robotNS = DISABLE;
+    /**********************|| Control Cycle ||**********************/
+    /****Control state: If it is safe the robot can move and mow****/
+
+    if(robotPS == ROBOT_DISABLE){
+      if(robotNS == ROBOT_ARMED){
+//Line below is wrong and need to be less than instead once accelerometer is installed.
+        if (millis() > stableTime + 10000){ // Not stable so report error and disable state change
+          robotNS = ROBOT_DISABLE;
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot not stable, state change canceled");
+          TekMow_Comm.sendPayload();
+        }
+      }
+      if(robotNS == ROBOT_MOW){
+        robotNS = ROBOT_DISABLE;
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot can not move from ROBOT_DISABLE to ROBOT_MOW");
+        TekMow_Comm.sendPayload();
+      }
+    } 
+    else if(robotPS == ROBOT_ARMED){
+      if(robotNS == ROBOT_DISABLE){
+        Drive(STOP);
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_DISABLE");
+        TekMow_Comm.sendPayload();
+      }
+      if(robotNS == ROBOT_MOW){
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_MOW");
+        TekMow_Comm.sendPayload();
+        startMow();
+      }
+    } 
+    else if(robotPS == ROBOT_MOW){
+      if(robotNS == ROBOT_DISABLE){
+        Drive(STOP);
+        stopMow();
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_DISABLE");
+        TekMow_Comm.sendPayload();
+      }
+      if(robotNS == ROBOT_ARMED){
+        stopMow();
+        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_ARMED");
+        TekMow_Comm.sendPayload();
+      }
     }
 
-    /**********************|| Control Cycle ||**********************/
-    /****Controle state: If it is safe the robot can move and mow****/
-    if(robotNS == DISABLE){
-      Drive(STOP);
-    }else{
-      //Driving
-      if(driveNS == JOY_DRIVE || (driveNS != drivePS && drivePS != JOY_DRIVE)){ //joystick overides serial motion commands
+    robotPS = robotNS;
+     
+    if(robotPS == ROBOT_ARMED || robotPS == ROBOT_MOW){ // These states allows for motion
+      if(driveNS == JOY_DRIVE ) {  //joystick overides serial motion commands
+        Drive(driveNS); 
+      } else if (driveNS != drivePS && drivePS != JOY_DRIVE){
         Drive(driveNS);
-        drivePS = driveNS;
       }
-  
-      //Mowing
-      if(robotNS == MOW){
-        robotPS = robotNS;
-      }
+
+      drivePS = driveNS;
     }
 
     /****Error state: If we are in this error mode, the only thing we can do is communicate****/
@@ -436,7 +500,7 @@ void loop() {
         TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
         break;
       default:
-        //Serial.println("Invalid Responce");
+        //Serial.println("Invalid Response");
         break;
     }
   
