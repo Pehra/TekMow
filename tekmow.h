@@ -6,13 +6,16 @@ typedef enum {
   LEFT,
   RIGHT,
   STOP,
+  JOY_DRIVE,
+	
   SET_COORD,
   HEART_BEAT,
   ECHO,
+
+  
   ECHO_RESPONSE,
   GPS_RESPONSE,
-  JOY_DRIVE,
-  
+  SENSOR_RESPONSE,
   
   COMM_ARM,
   COMM_DISABLE,
@@ -21,8 +24,6 @@ typedef enum {
   
   DUMP_VARS,
   READ_DATA,
-  BLADE_ON,
-  BLADE_OFF,
   SHUT_DOWN,
   num_commands
 } commands;

@@ -95,6 +95,8 @@ bool SendCommand(){
 }
 
 void recvCommand(){
+  Payload temp;
+  
   //Grab Info packet
   TekMow_Comm.pullPayload();
 
@@ -102,11 +104,19 @@ void recvCommand(){
   switch (TekMow_Comm.getCommand()){
     case GPS_RESPONSE: //Not implemented
       break;
+    case SENSOR_RESPONSE: //Outputs a CSV ready line to the serial port
+      temp = TekMow_Comm.getPayload(); //Grab the next packet too since it is the payload
+      for(int i = 0; i < 3; i++){
+        Serial.print(temp.ints[i]);
+        Serial.print(',');
+      }
+      Serial.println(' ');
+      break;
     case ECHO_RESPONSE:
       Serial.print("ECHO_RESPONSE: ");
-      Payload Temp = TekMow_Comm.getPayload(); //Grab the next packet too since it is the payload
+      temp = TekMow_Comm.getPayload(); //Grab the next packet too since it is the payload
       for(int i = 0; i < TekMow_Comm.getSize(); i++){
-        Serial.print((char)Temp.bytes[i]);
+        Serial.print((char)temp.bytes[i]);
       }
       Serial.println(' ');
       break;
