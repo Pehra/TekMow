@@ -42,8 +42,7 @@ void Joystick::calibration(){
 	delay(700);
 	Serial.println("3!");
 	
-	cal.X = analogRead(x_pin);//read center x
-	cal.Y = analogRead(y_pin);//read center y
+	
 	
 	lower.X = -cal.X;
 	lower.Y = -cal.Y;

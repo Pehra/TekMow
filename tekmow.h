@@ -7,11 +7,12 @@ typedef enum {
   RIGHT,
   STOP,
   JOY_DRIVE,
-	
+  
   SET_COORD,
   HEART_BEAT,
   ECHO,
-
+  READ_DATA,
+  ZERO_SENSOR,
   
   ECHO_RESPONSE,
   GPS_RESPONSE,
@@ -21,9 +22,7 @@ typedef enum {
   COMM_DISABLE,
   COMM_MOW,
   
-  
   DUMP_VARS,
-  READ_DATA,
   SHUT_DOWN,
   num_commands
 } commands;
@@ -50,7 +49,8 @@ typedef enum robotStates{
 typedef enum commStates{
 	READ,
 	SEND_GPS,
-	COMM_ECHO,
+	SEND_ECHO,
+	SEND_SENSOR,
 	SEND_ERROR
 };
 

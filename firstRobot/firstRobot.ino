@@ -14,12 +14,12 @@
 #include <TinyGPS++.h>
 
 // These files need to have thier locations updated before compile to match where you placed your files.
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
-#include "C:/Users/Don/Desktop/TekMow/Comm.c"
+#include "D:/projects/TekMow/tekmow.h"
+#include "D:/projects/TekMow/Comm.c"
 
 // Only include one of the files below base don the mototr controller type used
-#include "C:/Users/Don/Desktop/TekMow/tb_mc.c"
-//#include "G:/My Drive/PC Transfer/Desktop/Tekbots/TekMow/TekMow/vesc_mc.c"
+//#include "D:/projects/TekMow/tb_mc.c"
+#include "D:/projects/TekMow/vesc_mc.c"
 
 #define MOVE_TIME     4000 // The default time (in milliseconds) before a motion watchdog time out.
 #define UPDATE_TIME   10000 // Time (in milliseconds) between sending GPS location back to controller
@@ -32,6 +32,10 @@ class Safety{
     Safety(int x_inputPin, int y_inputPin, int z_inputPin );
     int isLevel();
     int isStable();
+    void zeroLevel();
+    int getXa();
+    int getYa();
+    int getZa();
     void print_values(int x, int y, int z);
     void plot_all(int x, int y, int z, int xa, int ya, int za);
     void plot_averages();
@@ -57,6 +61,7 @@ class Safety{
     int z_readings[10];      // the readings from the A2 input
     int zt = 0;                  // the running total for z
     int za = 0;                // the average for z
+    int zLevel = 430;
 
 };
 
@@ -189,7 +194,13 @@ int getCommand(){
     case HEART_BEAT:
       return 1;
     case ECHO:
-      commState = COMM_ECHO;
+      commState = SEND_ECHO;
+      return 1;
+    case READ_DATA:
+      commState = SEND_SENSOR;
+      return 1;
+    case ZERO_SENSOR:
+      TekMow_safety.zeroLevel();
       return 1;
     case COMM_ARM:
       robotNS = ROBOT_ARMED;
@@ -214,15 +225,14 @@ Safety::Safety(int x_inputPin, int y_inputPin, int z_inputPin )
   x_pin = x_inputPin;
   y_pin = y_inputPin;
   z_pin = z_inputPin;
+
+  zeroLevel();
 }
 
-Safety::isLevel()
-{
-  x = analogRead(x_pin);
-  y = analogRead(y_pin);
+Safety::isLevel(){
   z = analogRead(z_pin);
-
-  if (x >= 310 && x <= 350 && y >= 310 && y <= 350 && z > 350) // x and y axis are near 0G and the robot is right side up.
+  
+  if (z >= zLevel - 20) // x and y axis are near 0G and the robot is right side up.
   {
     return 1; // Return we are level
   } else {
@@ -236,7 +246,7 @@ Safety::isStable()
   x = analogRead(x_pin);
   y = analogRead(y_pin);
   z = analogRead(z_pin);
-
+  
   if (x >= (xa + 20) || x <= (xa - 20) ||
       y >= (ya + 20) || y <= (ya - 20) ||
       z >= (za + 20) || z <= (za - 20)) //LED lights up if the last reading is not the same as the average
@@ -245,6 +255,23 @@ Safety::isStable()
   } else {
     return 1;
   }
+}
+
+void Safety::zeroLevel(){
+  zLevel = analogRead(z_pin);
+  Serial.println(zLevel);
+}
+
+int Safety::getXa(){
+  return xa;
+}
+
+int Safety::getYa(){
+  return ya;
+}
+
+int Safety::getZa(){
+  return za;
 }
 
 void Safety::print_values(int x, int y, int z)
@@ -383,8 +410,9 @@ void loop() {
         motionTime = millis();
         // Take new measurements and average
         TekMow_safety.calculate_average();
-        if (TekMow_safety.isStable())
+        if (!(true/*TekMow_safety.isStable() && TekMow_safety.isLevel()*/)){
           stableTime = millis();
+        }
       }
     }
     
@@ -431,9 +459,12 @@ void loop() {
     if(robotPS == ROBOT_DISABLE){
       if(robotNS == ROBOT_ARMED){
 //Line below is wrong and need to be less than instead once accelerometer is installed.
-        if (millis() > stableTime + 10000){ // Not stable so report error and disable state change
+        if (millis() < stableTime + 2000){ // Not stable so report error and disable state change
           robotNS = ROBOT_DISABLE;
           TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot not stable, state change canceled");
+          TekMow_Comm.sendPayload();
+        }else{
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_ARMED");
           TekMow_Comm.sendPayload();
         }
       }
@@ -493,11 +524,14 @@ void loop() {
   if(commState != READ){
     //Package data to send to controller
     switch (commState){
-      case COMM_ECHO:
+      case SEND_ECHO:
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
         break;
       case SEND_GPS:
         TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
+        break;
+      case SEND_SENSOR:
+         TekMow_Comm.sendSensor(TekMow_safety.getXa(), TekMow_safety.getYa(), TekMow_safety.getZa());
         break;
       default:
         //Serial.println("Invalid Response");

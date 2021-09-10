@@ -11,11 +11,12 @@
 
 // These files need to have thier locations updated before compile to match where you placed your files.
 
-#include "C:/Users/Don/Desktop/TekMow/Joystick.c"
-#include "C:/Users/Don/Desktop/TekMow/tekmow.h"
-#include "C:/Users/Don/Desktop/TekMow/Comm.c"
+#include "D:/projects/TekMow/Joystick.c"
+#include "D:/projects/TekMow/tekmow.h"
+#include "D:/projects/TekMow/Comm.c"
 
 #define HEARTBEATTIMEOUT 4000
+#define JOYBUTTON   8
 
 /* Hardware configuration: Set up nRF24L01 radio on SPI bus plus pins 9 & 10 */
 Comm TekMow_Comm; // Creates communication object
@@ -24,6 +25,8 @@ Joystick Joy(A1, A0, 10, 1500);
 unsigned long heartBeatTimer;
 unsigned long joyTimer;
 float currentCoord[4];
+bool lastButton, disableState;
+
 
 uint8_t processSerialCommand(uint8_t incoming){
   switch (incoming){
@@ -39,6 +42,10 @@ uint8_t processSerialCommand(uint8_t incoming){
       return STOP;
    case 'e':
       return ECHO;
+   case 'r':
+      return READ_DATA;
+   case 'l':
+      return ZERO_SENSOR;
    case 'x':
       return COMM_ARM;
    case 'c':
@@ -66,17 +73,11 @@ bool SendCommand(){
     case SET_COORD:
       break;
     case HEART_BEAT:
-      TekMow_Comm.setSize(0);
-      break;
     case ECHO:
-      TekMow_Comm.setSize(0);
-      break;
+    case READ_DATA:
+    case ZERO_SENSOR:
     case COMM_ARM:
-      TekMow_Comm.setSize(0);
-      break;
     case COMM_DISABLE:
-      TekMow_Comm.setSize(0);
-      break;
     case COMM_MOW:
       TekMow_Comm.setSize(0);
       break;
@@ -126,6 +127,23 @@ void recvCommand(){
   }
 }
 
+void toggleDisable(){
+  //Arm
+  if(disableState == 1){
+    TekMow_Comm.setCommand(COMM_ARM);
+    disableState = 0;
+  }
+  //Disable
+  else{
+    TekMow_Comm.setCommand(COMM_DISABLE);
+    disableState = 1;
+  }
+
+  TekMow_Comm.setSize(0);
+
+  TekMow_Comm.sendPayload();
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.println(F("TekMow Transmitter Starting"));
@@ -133,9 +151,14 @@ void setup() {
   Serial.println(F("If a joystick is connected, it will work as well."));
   Serial.println(F("c: will move to ROBOT_DISABLED"));
   Serial.println(F("x: will moive to ROBOT_ARMED"));
-  
+
+  pinMode(JOYBUTTON, INPUT);
+  digitalWrite(JOYBUTTON, HIGH);
+
   TekMow_Comm.initRadio(9,10,0);
   Joy.calibration();
+
+  disableState = 1;
 }
 
 void loop() {
@@ -155,11 +178,21 @@ void loop() {
 
   /**********************|| Joystick Input ||**********************/
 
-  if(Joy.alive() && millis() > joyTimer + 10){ // We only need to read the joystick at most every 10mS
-    //Joy.disp();
-    TekMow_Comm.sendJoystick(Joy.getX(), Joy.getY());
-    TekMow_Comm.sendPayload();
-    heartBeatTimer = millis();
+  if(millis() > joyTimer + 10){ // We only need to read the joystick at most every 10mS
+    bool temp = digitalRead(JOYBUTTON);
+    
+    if(Joy.alive()){
+      //Joy.disp();
+      TekMow_Comm.sendJoystick(Joy.getX(), Joy.getY());
+      TekMow_Comm.sendPayload();
+      heartBeatTimer = millis();
+    }
+
+    if( temp == 0 && lastButton != 0){
+      toggleDisable();
+    }
+    
+    lastButton = temp;
     joyTimer = millis();
   }
 
