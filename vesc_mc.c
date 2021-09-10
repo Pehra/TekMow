@@ -40,16 +40,30 @@ void motor_init() {
 
 //assumption: values are -100 -> 100
 void anlgDrive(int X, int Y){
-	int RSpeed = map(Y, -100 , 100, 1200, 1800);
-    int LSpeed = map(Y, -100 , 100, 1200, 1800);
+	int RSpeed = map(Y, -100 , 100, -350, 350);
+    int LSpeed = map(Y, -100 , 100, -350, 350);
 	
-	if(X < 0){
-		RSpeed = RSpeed + map(X, -100 , 0, 150, 50);
-		LSpeed = LSpeed - map(X, -100 , 0, 150, 50);
-	}else if(X > 0){
-		RSpeed = RSpeed - map(X, 0 , 100, 150, 50);
-		LSpeed = LSpeed + map(X, 0 , 100, 150, 50);
+	int turnAmount = map(X, -100 , 100, -150, 150);
+	
+	if(Y > 0){
+		RSpeed = RSpeed - turnAmount;
+		LSpeed = LSpeed + turnAmount;
+	}else if (Y < 0){
+		RSpeed = RSpeed + turnAmount;
+		LSpeed = LSpeed - turnAmount;
+	}else if (Y == 0){
+		RSpeed =  turnAmount * -2;
+		LSpeed =  turnAmount *  2;
 	}
+	
+	RSpeed += 1500;
+	LSpeed += 1500;
+	
+	/*Serial.print("2000 1000 ");
+	Serial.print(LSpeed);
+	Serial.print(" ");
+	Serial.println(RSpeed);
+	*/
 	
 	esc_R.writeMicroseconds(RSpeed);
 	esc_L.writeMicroseconds(LSpeed);

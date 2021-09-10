@@ -1,8 +1,8 @@
 // Defines for the motor controller. Only needed/used for the small robots.
-#define R_EN        5
-#define R_DIR       4
-#define L_EN        7
-#define L_DIR       6
+#define R_EN        7
+#define R_DIR       6
+#define L_EN        5
+#define L_DIR       4
 
 void Forword() {
 	digitalWrite(L_DIR, HIGH);
@@ -49,22 +49,21 @@ void motor_init() {
 //assumption: values are -100 -> 100
 void anlgDrive(int X, int Y){
 	//getting throttle values
-	int RSpeed = map(Y, -100 , 100, -255, 255);
-    int LSpeed = map(Y, -100 , 100, -255, 255);
+	int RSpeed = map(Y, -100 , 100, -175, 175);
+    int LSpeed = map(Y, -100 , 100, -175, 175);
 	
-	uint8_t turnAmount = map(X, -100 , 100, 50, 50);
+	int8_t turnAmount = map(X, -100 , 100, -80, 80);
 	
-	if((X < 0 && Y > 0) || (X > 0 && Y < 0)){
-		RSpeed = RSpeed + turnAmount;
-		LSpeed = LSpeed - turnAmount;
-	}else if((X > 0 && Y > 0) || (X < 0 && Y < 0)){
+	if(Y > 0){
 		RSpeed = RSpeed - turnAmount;
 		LSpeed = LSpeed + turnAmount;
+	}else if (Y < 0){
+		RSpeed = RSpeed + turnAmount;
+		LSpeed = LSpeed - turnAmount;
+	}else if (Y == 0){
+		RSpeed =  turnAmount * -2;
+		LSpeed =  turnAmount *  2;
 	}
-	
-	//writing values
-	analogWrite(R_EN, 255 - abs(RSpeed));
-	analogWrite(L_EN, 255 - abs(LSpeed));
 	
 	if(RSpeed < 0)
 		digitalWrite(R_DIR, LOW);
@@ -75,4 +74,11 @@ void anlgDrive(int X, int Y){
 		digitalWrite(L_DIR, LOW);
 	else
 		digitalWrite(L_DIR, HIGH);
+	
+	
+	//writing values
+	analogWrite(R_EN, 255 - abs(RSpeed));
+	analogWrite(L_EN, 255 - abs(LSpeed));
+	
+	
 }

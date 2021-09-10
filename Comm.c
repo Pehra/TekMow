@@ -42,10 +42,12 @@ class Comm{
 		void setPayload(Payload newPayload);
 		void setSize(uint8_t newsize);
 		int sendPayload();
+		void displayPayload();
 
 //Why is this a load data while the others are load and send?		
 		bool nrfDebugText(uint8_t newcommand, String text);
 		bool sendLocation(float latitude, float longitude);	
+		bool sendSensor(uint16_t x, uint16_t y, uint16_t z);	
 		bool sendJoystick(int X, int Y);
 
 	private:
@@ -117,6 +119,30 @@ void Comm::setSize(uint8_t newsize){
 	size = newsize;
 }
 
+void Comm::displayPayload(){
+	Serial.print(command);
+	Serial.print('|');
+	Serial.print(size);
+	
+	if(size > 0){
+		Serial.print(": ");
+		
+		//print hex
+		for(int i = 0; i < size; i++){
+			Serial.print(buffer.bytes[i]);
+			Serial.print('|');
+		}
+		Serial.print(" [");
+		
+		//print char
+		for(int i = 0; i < size; i++){
+			Serial.print((char)buffer.bytes[i]);
+		}
+		Serial.print(']');
+	}
+	Serial.println("");
+}
+
 /*
 	Assumptions:
 	- command, size, buffer and info can be overriden
@@ -137,15 +163,7 @@ int Comm::pullPayload(){ //This loads buffer with up to 32 bytes of info. Is blo
 	//Debug
 	if (false){
 		Serial.println("Received Payload:");
-		Serial.print(command);
-		Serial.print('|');
-		Serial.print(size);
-		Serial.print(": ");
-		for(int i = 0; i < size; i++){
-			Serial.print((char)buffer.bytes[i]);
-			Serial.print('|');
-		}
-		Serial.println(' ');
+		displayPayload();
 	}
 	
 }
@@ -175,14 +193,7 @@ int Comm::sendPayload(){
 	//Debug
 	if (false){
 		Serial.println("Sent Payload:");
-		Serial.print(info[0]);
-		Serial.print('|');
-		Serial.print(info[1]);
-		for(int i = 0; i < size; i++){
-			Serial.print('|');
-			Serial.print((char)buffer.bytes[i]);
-		}
-		Serial.println(' ');
+		displayPayload();
 	}
 	
 	//clear buffer
@@ -217,14 +228,7 @@ bool Comm::nrfDebugText(uint8_t newcommand, String text){
 	//Debug 
 	if (false){
 		Serial.println("Saved Payload:");
-		Serial.print(command);
-		Serial.print('|');
-		Serial.print(size);
-		for(int i = 0; i < size; i++){
-			Serial.print('|');
-			Serial.print((char) buffer.bytes[i]);
-		}
-		Serial.println(' ');
+		displayPayload();
 	}
 	
 	return 1;
@@ -247,14 +251,26 @@ bool Comm::sendLocation(float latitude, float longitude) {
 	//Debug 
 	if (false){
 		Serial.println("Saved Payload:");
-		Serial.print(command);
-		Serial.print('|');
-		Serial.print(size);
-		for(int i = 0; i < size; i++){
-			Serial.print('|');
-			Serial.print(buffer.floats[i]);
-		}
-		Serial.println(' ');
+		displayPayload();
+	}
+	
+	return 1;
+}
+
+bool Comm::sendSensor(uint16_t x, uint16_t y, uint16_t z) {
+	//Set size and command
+	size = 6;
+	command = SENSOR_RESPONSE;
+	
+	//Fill payload with two floats
+	buffer.ints[0] = x;
+	buffer.ints[1] = y;
+	buffer.ints[2] = z;
+	
+	//Debug 
+	if (false){
+		Serial.println("Saved Payload:");
+		displayPayload();
 	}
 	
 	return 1;
