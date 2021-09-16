@@ -25,6 +25,7 @@ Joystick Joy(A1, A0, 10, 1500);
 unsigned long heartBeatTimer;
 unsigned long joyTimer;
 float currentCoord[4];
+float box[4];
 bool lastButton, disableState;
 
 
@@ -53,13 +54,45 @@ uint8_t processSerialCommand(uint8_t incoming){
    case 'm':
       return COMM_MOW;
    default:
-      return incoming; 
+      return incoming - '0'; 
+  }
+}
+
+uint8_t processSerialCommand(){
+  tens = Serial.read();
+  ones = Serial.read();
+
+  switch (tens){
+    case 'w':
+      return FORWARD;
+    case 'a':
+      return LEFT;
+   case 'd':
+      return RIGHT;
+   case 's':
+      return BACKWARD;
+   case ' ':
+      return STOP;
+   case 'e':
+      return ECHO;
+   case 'r':
+      return READ_DATA;
+   case 'l':
+      return ZERO_SENSOR;
+   case 'x':
+      return COMM_ARM;
+   case 'c':
+      return COMM_DISABLE;
+   case 'm':
+      return COMM_MOW;
+   default:
+      return (tens-'0')*10 + (ones-'0'); 
   }
 }
 
 bool SendCommand(){
   //Handle Serial input
-  uint8_t command = processSerialCommand(Serial.read());
+  uint8_t command = processSerialCommand();
 
   //Create first payload
   switch (command){
@@ -71,6 +104,13 @@ bool SendCommand(){
       TekMow_Comm.setSize(0);
       break;
     case SET_COORD:
+      Payload temp;
+      
+      getCoord(box);
+      for(int i = 0; i < 4; i++)
+        //temp.floats[i] = box[i];
+      
+      TekMow_Comm.setSize(/*16*/0);
       break;
     case HEART_BEAT:
     case ECHO:
@@ -85,7 +125,7 @@ bool SendCommand(){
       Serial.println("invalid command");
       return 0;
   }
-
+  Serial.print("test");
   //Set Command
   TekMow_Comm.setCommand(command);
     
@@ -103,18 +143,26 @@ void recvCommand(){
 
   //Prosses based on Command
   switch (TekMow_Comm.getCommand()){
-    case GPS_RESPONSE: //Not implemented
+    case GPS_RESPONSE: 
+      temp = TekMow_Comm.getPayload();
+      Serial.print("GPS: ");
+      Serial.print(temp.floats[0], 7);
+      Serial.print(", ");
+      Serial.print(temp.floats[1], 7);
+      Serial.print(", ");
+      Serial.println(temp.bytes[8]);
       break;
     case SENSOR_RESPONSE: //Outputs a CSV ready line to the serial port
       temp = TekMow_Comm.getPayload(); //Grab the next packet too since it is the payload
-      for(int i = 0; i < 3; i++){
-        Serial.print(temp.ints[i]);
-        Serial.print(',');
-      }
-      Serial.println(' ');
+      Serial.print("Sensor: ");
+      Serial.print(temp.ints[0]);
+      Serial.print(',');
+      Serial.print(temp.ints[1]);
+      Serial.print(',');
+      Serial.println(temp.ints[2]);
       break;
     case ECHO_RESPONSE:
-      Serial.print("ECHO_RESPONSE: ");
+      Serial.print("Message: ");
       temp = TekMow_Comm.getPayload(); //Grab the next packet too since it is the payload
       for(int i = 0; i < TekMow_Comm.getSize(); i++){
         Serial.print((char)temp.bytes[i]);
@@ -150,7 +198,7 @@ void setup() {
   Serial.println(F("Use WASD to move, SPACE to stop."));
   Serial.println(F("If a joystick is connected, it will work as well."));
   Serial.println(F("c: will move to ROBOT_DISABLED"));
-  Serial.println(F("x: will moive to ROBOT_ARMED"));
+  Serial.println(F("x: will moive to ROBOT_ARMED \n\n"));
 
   pinMode(JOYBUTTON, INPUT);
   digitalWrite(JOYBUTTON, HIGH);

@@ -18,8 +18,8 @@
 #include "D:/projects/TekMow/Comm.c"
 
 // Only include one of the files below base don the mototr controller type used
-//#include "D:/projects/TekMow/tb_mc.c"
-#include "D:/projects/TekMow/vesc_mc.c"
+#include "D:/projects/TekMow/tb_mc.c"
+//#include "D:/projects/TekMow/vesc_mc.c"
 
 #define MOVE_TIME     4000 // The default time (in milliseconds) before a motion watchdog time out.
 #define UPDATE_TIME   10000 // Time (in milliseconds) between sending GPS location back to controller
@@ -81,6 +81,7 @@ Coord boxCorner2 = {44.567232, -123.279307};
 unsigned long driveTime = 0;
 unsigned long locationUpdateTime = 0;
 unsigned long lastGpsTime = 0;
+unsigned long sendGpsTime = 0;
 unsigned long stableTime = 0;
 unsigned long motionTime = 0;
 unsigned long radioLinkTime = 0;
@@ -135,21 +136,12 @@ int getGPSdata(){
   // feed the GPS object
   while(Serial1.available())
       gps.encode(Serial1.read());
-      
-//  Serial.println("GPS");
   
-  if (gps.location.isValid()){
-//    Serial.print(gps.location.lat());
-//    Serial.print(" : ");
-//    Serial.println(gps.location.lng());
-    
+  if (gps.location.isValid()){    
     currentCoord.latitude = gps.location.lat();
     currentCoord.longitude = gps.location.lng();
     return true;
   }else{
-//    Serial.print(gps.location.lat());
-//   Serial.print(" : ");
-//    Serial.println(gps.location.lng());
     return false;
   }
 }
@@ -194,7 +186,7 @@ int getCommand(){
     case HEART_BEAT:
       return 1;
     case ECHO:
-      commState = SEND_ECHO;
+      TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
       return 1;
     case READ_DATA:
       commState = SEND_SENSOR;
@@ -410,7 +402,7 @@ void loop() {
         motionTime = millis();
         // Take new measurements and average
         TekMow_safety.calculate_average();
-        if (!(true/*TekMow_safety.isStable() && TekMow_safety.isLevel()*/)){
+        if (!(TekMow_safety.isStable() /*&& TekMow_safety.isLevel()*/)){
           stableTime = millis();
         }
       }
@@ -426,7 +418,7 @@ void loop() {
       int box = inBox(boxCorner1, boxCorner2);
         if (box == 1) { 
           gpsNS = GPS_INBOUNDS;
-        } else if (box == 2) {
+        } else if (box == 2 || GPSgood == 0) {
           gpsNS = GPS_OUTBOUNDS;
         } else {
           gpsNS = GPS_ERROR;
@@ -438,18 +430,18 @@ void loop() {
     This section is for checks that should always be running regardless of robot state
     **/
     
-    if (millis() > (driveTime + MOVE_TIME)) { // Drive Watchdog Timer
+    if (driveNS != STOP && millis() > (driveTime + MOVE_TIME)) { // Drive Watchdog Timer
       driveTime = millis();
       Stop();
       driveNS = STOP;
       TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Drive Watchdog Elapsed");
+      
     }
 
     //Check GPS box
-    if (gpsNS == GPS_OUTBOUNDS) {
-//      Serial.println("Not in GPS Region");
+    if (gpsPS != GPS_OUTBOUNDS && gpsNS == GPS_OUTBOUNDS) {
+      Serial.println("Not in GPS Region");
       TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot Not in GPS Region");
-      robotNS = ROBOT_DISABLE;
       gpsPS = gpsNS;
     }
 
@@ -458,31 +450,28 @@ void loop() {
 
     if(robotPS == ROBOT_DISABLE){
       if(robotNS == ROBOT_ARMED){
-//Line below is wrong and need to be less than instead once accelerometer is installed.
         if (millis() < stableTime + 2000){ // Not stable so report error and disable state change
           robotNS = ROBOT_DISABLE;
-          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot not stable, state change canceled");
-          TekMow_Comm.sendPayload();
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot not stable, SC canceled");
+        }else if(gpsPS == GPS_OUTBOUNDS){
+          TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "GPS out of box, SC canceled");
+          robotNS = ROBOT_DISABLE;
         }else{
           TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_ARMED");
-          TekMow_Comm.sendPayload();
         }
       }
       if(robotNS == ROBOT_MOW){
         robotNS = ROBOT_DISABLE;
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Robot can not move from ROBOT_DISABLE to ROBOT_MOW");
-        TekMow_Comm.sendPayload();
       }
     } 
     else if(robotPS == ROBOT_ARMED){
       if(robotNS == ROBOT_DISABLE){
         Drive(STOP);
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_DISABLE");
-        TekMow_Comm.sendPayload();
       }
       if(robotNS == ROBOT_MOW){
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_MOW");
-        TekMow_Comm.sendPayload();
         startMow();
       }
     } 
@@ -491,17 +480,16 @@ void loop() {
         Drive(STOP);
         stopMow();
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_DISABLE");
-        TekMow_Comm.sendPayload();
       }
       if(robotNS == ROBOT_ARMED){
         stopMow();
         TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Moving to ROBOT_ARMED");
-        TekMow_Comm.sendPayload();
       }
     }
 
     robotPS = robotNS;
-     
+
+    /**** Doing stuff ***/
     if(robotPS == ROBOT_ARMED || robotPS == ROBOT_MOW){ // These states allows for motion
       if(driveNS == JOY_DRIVE ) {  //joystick overides serial motion commands
         Drive(driveNS); 
@@ -510,6 +498,11 @@ void loop() {
       }
 
       drivePS = driveNS;
+    }
+
+    if(commState == READ && sendGpsTime + 1000 < millis()){
+      sendGpsTime = millis();
+      commState = SEND_GPS;
     }
 
     /****Error state: If we are in this error mode, the only thing we can do is communicate****/
@@ -524,11 +517,8 @@ void loop() {
   if(commState != READ){
     //Package data to send to controller
     switch (commState){
-      case SEND_ECHO:
-        TekMow_Comm.nrfDebugText(ECHO_RESPONSE, "Echo Back");
-        break;
       case SEND_GPS:
-        TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude);
+        TekMow_Comm.sendLocation(currentCoord.latitude, currentCoord.longitude, GPSgood);
         break;
       case SEND_SENSOR:
          TekMow_Comm.sendSensor(TekMow_safety.getXa(), TekMow_safety.getYa(), TekMow_safety.getZa());

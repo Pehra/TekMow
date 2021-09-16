@@ -35,14 +35,9 @@ Joystick::Joystick(uint8_t x_pin, uint8_t y_pin, uint8_t dead, short stopSend){
 
 void Joystick::calibration(){	
 	Serial.println("Keep your joystick in the center position...\nwait...");
-	delay(700);
-	Serial.print("1...");
-	delay(700);
-	Serial.print("2...");
-	delay(700);
-	Serial.println("3!");
 	
-	
+	cal.X = analogRead(x_pin);
+	cal.Y = analogRead(y_pin);
 	
 	lower.X = -cal.X;
 	lower.Y = -cal.Y;
@@ -72,6 +67,7 @@ void Joystick::calibration(){
 			y_mod = 1;
 		}
 	}
+	//Serial.print("mod_y:"); Serial.println(y_mod);
 	
 	Serial.println("move your joystick to the right position...\nwait...");
 	
@@ -85,8 +81,7 @@ void Joystick::calibration(){
 		x_mod = 1;
 	}
 	
-	Serial.print("mod_x:"); Serial.println(x_mod);
-    Serial.print("mod_y:"); Serial.println(y_mod);
+	//Serial.print("mod_x:"); Serial.println(x_mod);
 	
 }
 

@@ -1,5 +1,5 @@
 //Command List
-typedef enum {
+typedef enum commands{
   NULL_COMM,
   FORWARD,
   BACKWARD,
@@ -25,7 +25,7 @@ typedef enum {
   DUMP_VARS,
   SHUT_DOWN,
   num_commands
-} commands;
+};
 
 typedef enum gpsStates{
 	GPS_INBOUNDS,

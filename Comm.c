@@ -46,7 +46,7 @@ class Comm{
 
 //Why is this a load data while the others are load and send?		
 		bool nrfDebugText(uint8_t newcommand, String text);
-		bool sendLocation(float latitude, float longitude);	
+		bool sendLocation(float latitude, float longitude, bool good);	
 		bool sendSensor(uint16_t x, uint16_t y, uint16_t z);	
 		bool sendJoystick(int X, int Y);
 
@@ -211,6 +211,7 @@ int Comm::sendPayload(){
 	- The string being sent is 30 bytes or less. Function will drop extra bytes
 	- newcommand will override command
 	- size and buffer will be overiden
+	- auto sends message
 */
 bool Comm::nrfDebugText(uint8_t newcommand, String text){
 	//Set size and command
@@ -231,6 +232,8 @@ bool Comm::nrfDebugText(uint8_t newcommand, String text){
 		displayPayload();
 	}
 	
+	sendPayload();
+	
 	return 1;
 }
 
@@ -239,14 +242,15 @@ bool Comm::nrfDebugText(uint8_t newcommand, String text){
 	- command will be set to GPS_RESPONSE
 	- size and buffer will be overiden
 */
-bool Comm::sendLocation(float latitude, float longitude) {
+bool Comm::sendLocation(float latitude, float longitude, bool good) {
 	//Set size and command
-	size = 8;
+	size = 9;
 	command = GPS_RESPONSE;
 	
 	//Fill payload with two floats
 	buffer.floats[0] = latitude;
 	buffer.floats[1] = longitude;
+	buffer.bytes[8] = good;
 	
 	//Debug 
 	if (false){
